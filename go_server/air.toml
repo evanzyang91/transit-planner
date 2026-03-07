@@ -1,0 +1,39 @@
+# air.toml — Windows-safe config
+#:schema https://json.schemastore.org/any.json
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # IMPORTANT: .exe on Windows
+  bin = "tmp/app.exe"
+
+  # Build command
+  cmd = "go build -o tmp/app.exe ."
+
+  # Run the binary
+  full_bin = "tmp/app.exe"
+
+  # Delay before rebuild (ms)
+  delay = 500
+
+  # File extensions to watch
+  include_ext = ["go", "tpl", "tmpl", "html"]
+  exclude_dir = ["tmp", "vendor", ".git", "server\\output", "output"]
+
+  stop_on_error = true
+
+  # Send interrupt instead of kill (critical for graceful shutdown)
+  send_interrupt = true
+
+  # How long Air waits before force-kill
+  kill_delay = 2000
+
+[log]
+  time = true
+
+[color]
+  main = "cyan"
+  watcher = "yellow"
+  build = "green"
+  runner = "magenta"

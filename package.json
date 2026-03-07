@@ -1,0 +1,25 @@
+{
+  "name": "hello-all-worlds",
+  "private": true,
+  "workspaces": [
+    "web",
+    "web_db",
+    "web_utils",
+    "express_utils",
+    "express_db",
+    "express_server"
+  ],
+  "scripts": {
+    "dev": "npm --workspace web run dev",
+    "dev:server": "npm --workspace express_server run dev",
+    "build": "npm --workspace web run build",
+    "lint": "npm --workspace web run lint",
+    "typecheck": "npm --workspace web run typecheck",
+    "db:generate": "npm --workspace @repo/web_db run generate",
+    "db:migrate": "npm --workspace @repo/web_db run migrate",
+    "db:push": "npm --workspace @repo/web_db run push",
+    "db:studio": "npm --workspace @repo/web_db run studio",
+    "express:start": "npm --workspace express_server run start"
+  },
+  "packageManager": "npm@10.9.2"
+}

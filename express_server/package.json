@@ -1,0 +1,21 @@
+{
+  "name": "express_server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+  "dev": "ts-node index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express_utils": "*",
+    "express_db": "*"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.2"
+  }
+}

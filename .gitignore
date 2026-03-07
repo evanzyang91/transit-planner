@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+
+# Environment (root .env used by all apps)
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# Node / Next / Express
+.next/
+out/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+.npm
+.pnpm-store/
+.pnp.*
+
+# Go
+bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.eggs/
+
+# Prisma / DB generated
+web_db/generated/
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs & debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Optional: uncomment if you don't commit sqlc-generated Go
+# db/db/*.go
