@@ -21,5 +21,9 @@
     "db:studio": "npm --workspace @repo/web_db run studio",
     "express:start": "npm --workspace express_server run start"
   },
-  "packageManager": "npm@10.9.2"
+  "packageManager": "npm@10.9.2",
+  "dependencies": {
+    "@tailwindcss/oxide-darwin-arm64": "^4.2.1",
+    "lightningcss-darwin-arm64": "^1.31.1"
+  }
 }

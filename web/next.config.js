@@ -7,6 +7,11 @@ import "./src/env.js";
 /** @type {import("next").NextConfig} */
 const config = {
   transpilePackages: ["@repo/web_db", "@repo/web_utils"],
+  experimental: {
+    turbo: {
+      root: "..",
+    },
+  },
 };
 
 export default config;
