@@ -1,22 +1,4 @@
 services:
-  go-db:
-    image: postgis/postgis:16-3.4
-    container_name: hello-go-db
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: genghis
-    ports:
-      - "5433:5432"
-    volumes:
-      - go-pgdata:/var/lib/postgresql/data
-      - ./db/migrations:/docker-entrypoint-initdb.d/migrations
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   python-db:
     image: postgis/postgis:16-3.4
@@ -30,44 +12,6 @@ services:
       - "5434:5432"
     volumes:
       - python-pgdata:/var/lib/postgresql/data
-      - ./db/migrations:/docker-entrypoint-initdb.d/migrations
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  express-db:
-    image: postgis/postgis:16-3.4
-    container_name: hello-express-db
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: genghis
-    ports:
-      - "5435:5432"
-    volumes:
-      - express-pgdata:/var/lib/postgresql/data
-      - ./db/migrations:/docker-entrypoint-initdb.d/migrations
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  web-db:
-    image: postgis/postgis:16-3.4
-    container_name: hello-web-db
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: genghis
-    ports:
-      - "5436:5432"
-    volumes:
-      - web-pgdata:/var/lib/postgresql/data
       - ./db/migrations:/docker-entrypoint-initdb.d/migrations
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -105,9 +49,28 @@ services:
       retries: 10
       start_period: 30s
 
+  redis:
+    image: redis:7-alpine
+    container_name: hello-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  bull-board:
+    image: stephanvanpelt/bull-board:latest
+    container_name: hello-bull-board
+    ports:
+      - "3010:3000"
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+
 volumes:
   go-pgdata:
   python-pgdata:
   express-pgdata:
   web-pgdata:
   kafka-data:
+  redis-data:
