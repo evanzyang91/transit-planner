@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     # Verify DB connectivity at startup using shared SQLAlchemy engine
     try:
         with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
+            connection.execute(text("SELECT 1 FROM agencies LIMIT 1"))
         print("Database connection check succeeded")
     except SQLAlchemyError as exc:
         # Fail fast so deployment/runtime clearly signals DB misconfiguration

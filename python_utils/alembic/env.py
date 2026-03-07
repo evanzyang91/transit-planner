@@ -2,16 +2,27 @@ from __future__ import annotations
 
 import os
 import sys
+import logging
 from logging.config import fileConfig
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# Ensure project package root is importable when Alembic is run from python_utils/
+# Resolve repository root and python package root.
+# env.py location: <repo>/python_utils/alembic/env.py
+REPO_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+# Ensure project package root is importable when Alembic is run from python_utils/
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+# Load environment variables from repository root .env if present.
+ENV_PATH = REPO_ROOT / ".env"
+load_dotenv(ENV_PATH, override=False)
 
 # this is the Alembic Config object, which provides
 # access to values within the .ini file in use.
@@ -20,6 +31,11 @@ config = context.config
 # Configure Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+logger = logging.getLogger("alembic.env")
+logger.info("Alembic REPO_ROOT resolved to: %s", REPO_ROOT)
+logger.info("Alembic PROJECT_ROOT resolved to: %s", PROJECT_ROOT)
+logger.info("Alembic .env path resolved to: %s (exists=%s)", ENV_PATH, ENV_PATH.exists())
 
 # Import metadata and model registry for autogenerate support.
 from python_utils.db.base import Base  # noqa: E402
@@ -31,11 +47,16 @@ target_metadata = Base.metadata
 def get_database_url() -> str:
     """
     Resolve DB URL for Alembic in this order:
-    1) ALEMBIC_DATABASE_URL
-    2) DATABASE_URL
-    3) sqlalchemy.url from alembic.ini
+    1) DATABASE_URL_PYTHON_RIDERSHIP
+    2) ALEMBIC_DATABASE_URL
+    3) DATABASE_URL
+    4) sqlalchemy.url from alembic.ini
     """
-    url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
+    url = (
+        os.getenv("DATABASE_URL_PYTHON_RIDERSHIP")
+        or os.getenv("ALEMBIC_DATABASE_URL")
+        or os.getenv("DATABASE_URL")
+    )
     if url:
         return url
 
@@ -45,7 +66,7 @@ def get_database_url() -> str:
 
     raise RuntimeError(
         "No database URL configured for Alembic. "
-        "Set ALEMBIC_DATABASE_URL or DATABASE_URL."
+        "Set DATABASE_URL_PYTHON_RIDERSHIP, ALEMBIC_DATABASE_URL, or DATABASE_URL."
     )
 
 
