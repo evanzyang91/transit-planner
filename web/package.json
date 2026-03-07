@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.2",
+    "@mapbox/mapbox-gl-draw": "^1.5.1",
     "@repo/web_db": "0.1.0",
     "@repo/web_utils": "0.1.0",
     "@t3-oss/env-nextjs": "^0.12.0",
@@ -24,6 +25,7 @@
     "@trpc/client": "^11.0.0",
     "@trpc/react-query": "^11.0.0",
     "@trpc/server": "^11.0.0",
+    "@types/mapbox__mapbox-gl-draw": "^1.4.9",
     "@types/mapbox-gl": "^3.4.1",
     "mapbox-gl": "^3.19.1",
     "next": "^15.2.3",

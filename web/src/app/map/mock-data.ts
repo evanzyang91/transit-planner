@@ -225,29 +225,6 @@ export const ROUTES: Route[] = [
       { name: "Don Mills",      coords: [-79.3294, 43.7758] },
     ],
   },
-  {
-    id: "streetcar-501",
-    name: "501 Queen",
-    shortName: "501",
-    color: "#E4001B",
-    textColor: "#ffffff",
-    type: "streetcar",
-    description: "Longest streetcar route in North America, running along Queen St from Long Branch to Neville Park.",
-    frequency: "Every 4–10 min",
-    stops: [
-      { name: "Long Branch",  coords: [-79.5508, 43.5947] },
-      { name: "Mimico",       coords: [-79.5106, 43.6028] },
-      { name: "Roncesvalles", coords: [-79.4483, 43.6411] },
-      { name: "Dufferin",     coords: [-79.4289, 43.6431] },
-      { name: "Ossington",    coords: [-79.4147, 43.6433] },
-      { name: "Bathurst",     coords: [-79.4014, 43.6447] },
-      { name: "University",   coords: [-79.3900, 43.6519] },
-      { name: "Yonge",        coords: [-79.3789, 43.6519] },
-      { name: "Parliament",   coords: [-79.3633, 43.6556] },
-      { name: "Broadview",    coords: [-79.3572, 43.6578] },
-      { name: "Neville Park", coords: [-79.2919, 43.6736] },
-    ],
-  },
 ];
 
 // ─── AI-Generated Route Suggestions ─────────────────────────────────────────
