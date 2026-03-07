@@ -24,33 +24,6 @@ export type RouteStats = {
 
 export type GeneratedRoute = Route & { stats: RouteStats };
 
-export type NeighbourhoodData = {
-  trafficLevel: "Low" | "Moderate" | "High" | "Very High";
-  employmentDensity: "Low" | "Moderate" | "High" | "Very High";
-  populationDensity: number; // people per km²
-  connectivityScore: number; // 1–10
-  transitLines: string[]; // route IDs
-};
-
-export const NEIGHBOURHOOD_DATA: Record<string, NeighbourhoodData> = {
-  "harbourfront":           { trafficLevel: "High",      employmentDensity: "Moderate",  populationDensity: 8200,  connectivityScore: 6,  transitLines: ["line-1-yonge", "line-1-university"] },
-  "entertainment-district": { trafficLevel: "Very High", employmentDensity: "Very High", populationDensity: 5400,  connectivityScore: 9,  transitLines: ["line-1-university", "line-2"] },
-  "downtown-core":          { trafficLevel: "Very High", employmentDensity: "Very High", populationDensity: 9800,  connectivityScore: 10, transitLines: ["line-1-yonge", "line-1-university", "line-2"] },
-  "distillery-corktown":    { trafficLevel: "Moderate",  employmentDensity: "Moderate",  populationDensity: 6100,  connectivityScore: 6,  transitLines: ["line-1-yonge"] },
-  "parkdale":               { trafficLevel: "Moderate",  employmentDensity: "Low",       populationDensity: 7800,  connectivityScore: 5,  transitLines: ["line-2"] },
-  "queen-west":             { trafficLevel: "High",      employmentDensity: "Moderate",  populationDensity: 8900,  connectivityScore: 7,  transitLines: ["line-2"] },
-  "kensington-market":      { trafficLevel: "Moderate",  employmentDensity: "Moderate",  populationDensity: 10200, connectivityScore: 7,  transitLines: ["line-1-university"] },
-  "church-wellesley":       { trafficLevel: "High",      employmentDensity: "Moderate",  populationDensity: 11400, connectivityScore: 8,  transitLines: ["line-1-yonge"] },
-  "regent-park":            { trafficLevel: "Low",       employmentDensity: "Low",       populationDensity: 9300,  connectivityScore: 5,  transitLines: ["line-1-yonge"] },
-  "leslieville":            { trafficLevel: "Low",       employmentDensity: "Low",       populationDensity: 6700,  connectivityScore: 4,  transitLines: [] },
-  "annex":                  { trafficLevel: "Moderate",  employmentDensity: "Moderate",  populationDensity: 9100,  connectivityScore: 8,  transitLines: ["line-2"] },
-  "rosedale":               { trafficLevel: "Low",       employmentDensity: "Moderate",  populationDensity: 4200,  connectivityScore: 7,  transitLines: ["line-1-yonge", "line-2"] },
-  "riverdale-danforth":     { trafficLevel: "Moderate",  employmentDensity: "Low",       populationDensity: 7500,  connectivityScore: 6,  transitLines: ["line-2"] },
-  "midtown":                { trafficLevel: "Moderate",  employmentDensity: "High",      populationDensity: 8600,  connectivityScore: 8,  transitLines: ["line-1-yonge"] },
-  "forest-hill":            { trafficLevel: "Low",       employmentDensity: "Low",       populationDensity: 3800,  connectivityScore: 4,  transitLines: [] },
-  "north-york":             { trafficLevel: "Moderate",  employmentDensity: "High",      populationDensity: 5100,  connectivityScore: 7,  transitLines: ["line-1-yonge", "line-4"] },
-};
-
 export type PopulationPoint = {
   coords: [number, number];
   weight: number; // 0–1
@@ -250,6 +223,29 @@ export const ROUTES: Route[] = [
       { name: "Bessarion",      coords: [-79.3761, 43.7681] },
       { name: "Leslie",         coords: [-79.3631, 43.7703] },
       { name: "Don Mills",      coords: [-79.3294, 43.7758] },
+    ],
+  },
+  {
+    id: "streetcar-501",
+    name: "501 Queen",
+    shortName: "501",
+    color: "#E4001B",
+    textColor: "#ffffff",
+    type: "streetcar",
+    description: "Longest streetcar route in North America, running along Queen St from Long Branch to Neville Park.",
+    frequency: "Every 4–10 min",
+    stops: [
+      { name: "Long Branch",  coords: [-79.5508, 43.5947] },
+      { name: "Mimico",       coords: [-79.5106, 43.6028] },
+      { name: "Roncesvalles", coords: [-79.4483, 43.6411] },
+      { name: "Dufferin",     coords: [-79.4289, 43.6431] },
+      { name: "Ossington",    coords: [-79.4147, 43.6433] },
+      { name: "Bathurst",     coords: [-79.4014, 43.6447] },
+      { name: "University",   coords: [-79.3900, 43.6519] },
+      { name: "Yonge",        coords: [-79.3789, 43.6519] },
+      { name: "Parliament",   coords: [-79.3633, 43.6556] },
+      { name: "Broadview",    coords: [-79.3572, 43.6578] },
+      { name: "Neville Park", coords: [-79.2919, 43.6736] },
     ],
   },
 ];

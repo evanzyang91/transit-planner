@@ -1,24 +1,14 @@
 "use client";
 
-import MapboxDraw from "@mapbox/mapbox-gl-draw";
-import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import mapboxgl from "mapbox-gl";
 import { useEffect, useRef, useState } from "react";
-
-type DrawMode = "normal" | "select" | "boundary";
-
 import {
   GENERATED_ROUTES,
-  NEIGHBOURHOOD_DATA,
   POPULATION_POINTS,
   ROUTES,
   type GeneratedRoute,
   type Route,
 } from "~/app/map/mock-data";
-import {
-  findNeighbourhoodPath,
-  TORONTO_NEIGHBOURHOODS,
-} from "~/app/map/toronto-neighbourhoods";
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 const TORONTO: [number, number] = [-79.3832, 43.6532];
@@ -59,105 +49,6 @@ function StatBar({ value, max, color }: { value: number; max: number; color: str
         className="h-1.5 rounded-full"
         style={{ width: `${(value / max) * 100}%`, background: color }}
       />
-    </div>
-  );
-}
-
-// ─── neighbourhood panel ──────────────────────────────────────────────────────
-
-const TRAFFIC_COLOR: Record<string, string> = {
-  "Low": "#22c55e",
-  "Moderate": "#f59e0b",
-  "High": "#f97316",
-  "Very High": "#ef4444",
-};
-
-function NeighbourhoodPanel({
-  id,
-  name,
-  onClose,
-}: {
-  id: string;
-  name: string;
-  onClose: () => void;
-}) {
-  const data = NEIGHBOURHOOD_DATA[id];
-  const transitLines = ROUTES.filter((r) => data?.transitLines.includes(r.id));
-
-  return (
-    <div className="pointer-events-auto w-72 overflow-hidden rounded-2xl bg-white shadow-2xl" style={{ border: "0.93px solid #BEB7B4" }}>
-      {/* Preview image */}
-      <div className="relative h-36">
-        <img src="/placeholder.png" alt="Neighbourhood view" className="h-full w-full object-cover" />
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 flex h-7 w-7 items-center justify-center rounded-full bg-white/80 text-stone-500 hover:bg-white hover:text-stone-800"
-        >
-          ✕
-        </button>
-      </div>
-
-      <div className="px-5 pt-4 pb-5 space-y-4">
-        <h2 className="text-base font-semibold text-stone-800">{name}</h2>
-
-        {data ? (
-          <>
-            <div className="space-y-2.5">
-              {/* Traffic */}
-              <div className="flex justify-between text-xs">
-                <span className="text-stone-500">Traffic levels</span>
-                <span className="font-semibold" style={{ color: TRAFFIC_COLOR[data.trafficLevel] }}>
-                  {data.trafficLevel}
-                </span>
-              </div>
-
-              {/* Employment */}
-              <div className="flex justify-between text-xs">
-                <span className="text-stone-500">Employment density</span>
-                <span className="font-semibold text-stone-800">{data.employmentDensity}</span>
-              </div>
-
-              {/* Population */}
-              <div className="flex justify-between text-xs">
-                <span className="text-stone-500">Population density</span>
-                <span className="font-semibold text-stone-800">{data.populationDensity.toLocaleString()} / km²</span>
-              </div>
-
-              {/* Connectivity */}
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-stone-500">How connected it is</span>
-                  <span className="font-semibold text-stone-800">{data.connectivityScore}/10</span>
-                </div>
-                <StatBar value={data.connectivityScore} max={10} color="#6366f1" />
-              </div>
-            </div>
-
-            {/* Transit lines */}
-            {transitLines.length > 0 && (
-              <div>
-                <p className="mb-2 text-[11px] font-semibold tracking-widest text-stone-400 uppercase">
-                  Lines in the area
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {transitLines.map((r) => (
-                    <span
-                      key={r.id}
-                      className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
-                      style={{ background: r.color + "22", color: r.color }}
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: r.color }} />
-                      {r.shortName}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-stone-400">No data available</p>
-        )}
-      </div>
     </div>
   );
 }
@@ -402,7 +293,6 @@ function GeneratedRoutePanel({
 export function TransitMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const drawRef = useRef<MapboxDraw | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [generatedRoute, setGeneratedRoute] = useState<GeneratedRoute | null>(null);
@@ -410,26 +300,7 @@ export function TransitMap() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [mapLoaded, setMapLoaded] = useState(false);
-  const [drawMode, setDrawMode] = useState<DrawMode>("normal");
-  const [hasBoundary, setHasBoundary] = useState(false);
-  const [selectedNeighbourhoods, setSelectedNeighbourhoods] = useState<Set<string>>(new Set());
-  const [focusedNeighbourhood, setFocusedNeighbourhood] = useState<{ id: string; name: string } | null>(null);
   const genIdxRef = useRef(0);
-
-  // Refs for use inside map event callbacks (avoid stale closure)
-  const drawModeRef = useRef<DrawMode>("normal");
-  const selectedNeighbourhoodsRef = useRef<Set<string>>(new Set());
-  // Blocks neighbourhood clicks for one tick after a polygon is completed,
-  // preventing the closing double-click from immediately selecting a neighbourhood.
-  const justCompletedBoundaryRef = useRef(false);
-
-  useEffect(() => {
-    drawModeRef.current = drawMode;
-  }, [drawMode]);
-
-  useEffect(() => {
-    selectedNeighbourhoodsRef.current = selectedNeighbourhoods;
-  }, [selectedNeighbourhoods]);
 
   function handleGenerate() {
     if (isGenerating) return;
@@ -442,56 +313,6 @@ export function TransitMap() {
       setDisabledStops(new Set());
       setIsGenerating(false);
     }, 1200);
-  }
-
-  function handleSetDrawMode(mode: DrawMode) {
-    const draw = drawRef.current;
-    const map = mapRef.current;
-    if (!draw) return;
-    if (mode === drawMode) return; // clicking the active mode button does nothing
-    setDrawMode(mode);
-    drawModeRef.current = mode;
-    if (mode === "boundary") {
-      // Clear neighbourhood selection when entering draw mode
-      if (map && mapLoaded) {
-        TORONTO_NEIGHBOURHOODS.features.forEach((f) => {
-          const id = f.properties?.id as string;
-          map.setFeatureState({ source: "neighbourhoods", id }, { selected: false });
-        });
-      }
-      setSelectedNeighbourhoods(new Set());
-      selectedNeighbourhoodsRef.current = new Set();
-      draw.changeMode("draw_polygon");
-    } else if (mode === "select") {
-      // Clear any drawn boundary when entering neighbourhood-select mode
-      draw.deleteAll();
-      setHasBoundary(false);
-      draw.changeMode("simple_select");
-    } else {
-      // "normal" — cancel any in-progress draw and return to view mode
-      draw.changeMode("simple_select");
-      // If we were mid-draw, the in-progress polygon is discarded by MapboxDraw
-      // when switching away from draw_polygon mode.
-    }
-  }
-
-  function handleClearAll() {
-    const draw = drawRef.current;
-    const map = mapRef.current;
-    if (draw) {
-      draw.deleteAll();
-      setHasBoundary(false);
-      draw.changeMode("simple_select");
-    }
-    if (map && mapLoaded) {
-      TORONTO_NEIGHBOURHOODS.features.forEach((f) => {
-        const id = f.properties?.id as string;
-        map.setFeatureState({ source: "neighbourhoods", id }, { selected: false });
-      });
-    }
-    setSelectedNeighbourhoods(new Set());
-    setDrawMode("normal");
-    drawModeRef.current = "normal";
   }
 
   function handleToggleStop(name: string) {
@@ -521,54 +342,6 @@ export function TransitMap() {
 
     mapRef.current = map;
 
-    const draw = new MapboxDraw({
-      displayControlsDefault: false,
-      styles: [
-        {
-          id: "gl-draw-polygon-fill",
-          type: "fill",
-          filter: ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
-          paint: { "fill-color": "#6366f1", "fill-opacity": 0.1 },
-        },
-        {
-          id: "gl-draw-polygon-stroke",
-          type: "line",
-          filter: ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
-          paint: { "line-color": "#6366f1", "line-width": 2, "line-dasharray": [3, 2] },
-        },
-        {
-          id: "gl-draw-point-outer",
-          type: "circle",
-          filter: ["all", ["==", "$type", "Point"], ["==", "meta", "vertex"]],
-          paint: { "circle-radius": 5, "circle-color": "#fff", "circle-stroke-color": "#6366f1", "circle-stroke-width": 2 },
-        },
-        {
-          id: "gl-draw-point-midpoint",
-          type: "circle",
-          filter: ["all", ["==", "$type", "Point"], ["==", "meta", "midpoint"]],
-          paint: { "circle-radius": 3, "circle-color": "#6366f1" },
-        },
-      ],
-    });
-    drawRef.current = draw;
-    map.addControl(draw as unknown as mapboxgl.IControl);
-
-    map.on("draw.create", (e: { features: GeoJSON.Feature[] }) => {
-      const feature = e.features[0];
-      if (feature?.geometry.type === "Polygon") setHasBoundary(true);
-      // Do NOT call draw.changeMode() here — MapboxDraw already transitions
-      // internally. Calling it again can re-trigger draw mode.
-      setDrawMode("normal");
-      drawModeRef.current = "normal";
-      justCompletedBoundaryRef.current = true;
-      setTimeout(() => { justCompletedBoundaryRef.current = false; }, 300);
-    });
-
-    map.on("draw.delete", () => {
-      const all = draw.getAll();
-      setHasBoundary(all.features.some((f) => f.geometry.type === "Polygon"));
-    });
-
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "bottom-right");
     map.addControl(new mapboxgl.ScaleControl({ unit: "metric" }), "bottom-left");
 
@@ -578,129 +351,6 @@ export function TransitMap() {
         ?.layers?.find(
           (l) => l.type === "symbol" && (l.layout as Record<string, unknown>)?.["text-field"],
         )?.id;
-
-      // ── Neighbourhood fill/border layers (below routes)
-      map.addSource("neighbourhoods", {
-        type: "geojson",
-        data: TORONTO_NEIGHBOURHOODS as GeoJSON.FeatureCollection,
-        promoteId: "id",
-      });
-
-      map.addLayer(
-        {
-          id: "neighbourhood-fill",
-          type: "fill",
-          source: "neighbourhoods",
-          paint: {
-            "fill-color": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              "#6366f1",
-              "#94a3b8",
-            ],
-            "fill-opacity": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              0.12,
-              ["boolean", ["feature-state", "hovered"], false],
-              0.06,
-              0.02,
-            ],
-          },
-        },
-        firstLabelLayer,
-      );
-
-      map.addLayer(
-        {
-          id: "neighbourhood-border",
-          type: "line",
-          source: "neighbourhoods",
-          paint: {
-            "line-color": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              "#6366f1",
-              "#94a3b8",
-            ],
-            "line-width": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              1.5,
-              0.5,
-            ],
-            "line-opacity": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              0.6,
-              0.3,
-            ],
-          },
-        },
-        firstLabelLayer,
-      );
-
-      // Neighbourhood click handler — only active in "select" mode
-      let hoveredNeighbourhoodId: string | null = null;
-
-      map.on("mousemove", "neighbourhood-fill", (e) => {
-        if (drawModeRef.current !== "select") return;
-        map.getCanvas().style.cursor = "pointer";
-        const id = e.features?.[0]?.properties?.id as string | undefined;
-        if (!id) return;
-        if (hoveredNeighbourhoodId && hoveredNeighbourhoodId !== id) {
-          map.setFeatureState(
-            { source: "neighbourhoods", id: hoveredNeighbourhoodId },
-            { hovered: false },
-          );
-        }
-        hoveredNeighbourhoodId = id;
-        map.setFeatureState({ source: "neighbourhoods", id }, { hovered: true });
-      });
-
-      map.on("mouseleave", "neighbourhood-fill", () => {
-        map.getCanvas().style.cursor = "";
-        if (hoveredNeighbourhoodId) {
-          map.setFeatureState(
-            { source: "neighbourhoods", id: hoveredNeighbourhoodId },
-            { hovered: false },
-          );
-          hoveredNeighbourhoodId = null;
-        }
-      });
-
-      map.on("click", "neighbourhood-fill", (e) => {
-        if (drawModeRef.current !== "select") return; // "normal" and "boundary" don't select
-        if (justCompletedBoundaryRef.current) return;
-        const id = e.features?.[0]?.properties?.id as string | undefined;
-        if (!id) return;
-        const name = e.features?.[0]?.properties?.name as string | undefined;
-
-        const current = selectedNeighbourhoodsRef.current;
-
-        if (current.has(id)) {
-          // Deselect this neighbourhood — clear the panel
-          setFocusedNeighbourhood(null);
-          map.setFeatureState({ source: "neighbourhoods", id }, { selected: false });
-          setSelectedNeighbourhoods((prev) => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          });
-        } else {
-          // Select — show panel for clicked neighbourhood
-          setFocusedNeighbourhood({ id, name: name ?? id });
-          // Find BFS path from existing selection → new target, select everything in between
-          const toAdd = findNeighbourhoodPath(current, id);
-          toAdd.forEach((nid) => {
-            map.setFeatureState({ source: "neighbourhoods", id: nid }, { selected: true });
-          });
-          setSelectedNeighbourhoods((prev) => new Set([...prev, ...toAdd]));
-        }
-
-        // Stop propagation so route line clicks don't fire
-        e.preventDefault();
-      });
 
       // 3D buildings
       map.addLayer(
@@ -853,20 +503,7 @@ export function TransitMap() {
       setMapLoaded(true);
     });
 
-    // Escape cancels an in-progress boundary draw
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && drawModeRef.current === "boundary") {
-        draw.deleteAll();
-        draw.changeMode("simple_select");
-        setHasBoundary(false);
-        setDrawMode("normal");
-        drawModeRef.current = "normal";
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
       map.remove();
       mapRef.current = null;
     };
@@ -1002,62 +639,51 @@ export function TransitMap() {
   }
 
   const showGeneratedPanel = !!generatedRoute && !selectedRoute;
-  const hasSelection = hasBoundary || selectedNeighbourhoods.size > 0;
 
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
 
-      {/* TTC Lines legend + neighbourhood panel — top left */}
-      <div className="absolute top-5 left-5 flex flex-col gap-4">
-        <div className="rounded-xl border border-[#D7D7D7] bg-white px-6 py-5 shadow-sm">
-          <p className="mb-3 text-lg font-bold text-stone-800">
-            TTC Lines
-          </p>
-          <ul className="space-y-2">
-            {ROUTES.map((r) => (
+      {/* TTC Lines legend — top left */}
+      <div className="absolute top-5 left-5 rounded-2xl border border-[#D7D7D7] bg-white px-6 py-5 shadow-sm">
+        <p className="mb-3 text-base font-bold text-stone-800">
+          TTC Lines
+        </p>
+        <ul className="space-y-2">
+          {ROUTES.map((r) => (
+            <li
+              key={r.id}
+              className="flex cursor-pointer items-center gap-3 text-sm text-stone-600 hover:text-stone-900"
+              onClick={() => setSelectedRoute(r)}
+            >
+              <span className="h-3 w-7 shrink-0 rounded-full" style={{ background: r.color }} />
+              {r.name}
+            </li>
+          ))}
+          {generatedRoute && (
+            <>
+              <li className="border-t border-stone-100 pt-1.5" />
               <li
-                key={r.id}
-                className="flex cursor-pointer items-center gap-3 text-base text-stone-600 hover:text-stone-900"
-                onClick={() => setSelectedRoute(r)}
+                className="flex cursor-pointer items-center gap-3 text-sm text-stone-600 hover:text-stone-900"
+                onClick={() => setSelectedRoute(null)}
               >
-                <span className="h-3 w-7 shrink-0 rounded-full" style={{ background: r.color }} />
-                {r.name}
+                <span
+                  className="h-3 w-7 shrink-0 rounded-full border-2"
+                  style={{ borderColor: generatedRoute.color, borderStyle: "dashed", background: "transparent" }}
+                />
+                <span className="truncate">{generatedRoute.name}</span>
               </li>
-            ))}
-            {generatedRoute && (
-              <>
-                <li className="border-t border-stone-100 pt-1.5" />
-                <li
-                  className="flex cursor-pointer items-center gap-3 text-base text-stone-600 hover:text-stone-900"
-                  onClick={() => setSelectedRoute(null)}
-                >
-                  <span
-                    className="h-3 w-7 shrink-0 rounded-full border-2"
-                    style={{ borderColor: generatedRoute.color, borderStyle: "dashed", background: "transparent" }}
-                  />
-                  <span className="truncate">{generatedRoute.name}</span>
-                </li>
-              </>
-            )}
-          </ul>
-        </div>
-
-        {focusedNeighbourhood && (
-          <NeighbourhoodPanel
-            id={focusedNeighbourhood.id}
-            name={focusedNeighbourhood.name}
-            onClose={() => setFocusedNeighbourhood(null)}
-          />
-        )}
+            </>
+          )}
+        </ul>
       </div>
 
-      {/* Top-center toolbar */}
-      <div className="pointer-events-none absolute top-5 left-0 right-0 flex justify-center gap-2">
+      {/* Center controls */}
+      <div className="pointer-events-none absolute top-5 left-0 right-0 flex justify-center gap-4">
         {/* Heatmap toggle */}
         <button
           onClick={() => setShowHeatmap((v) => !v)}
-          className={`pointer-events-auto flex h-[52px] items-center gap-3 rounded-xl border border-[#D7D7D7] bg-white px-6 text-base font-normal shadow-sm transition-all ${
+          className={`pointer-events-auto flex h-[52px] items-center gap-3 rounded-full border border-[#D7D7D7] bg-white px-6 text-sm font-normal shadow-sm transition-all ${
             showHeatmap ? "text-stone-700" : "text-stone-400"
           }`}
         >
@@ -1068,110 +694,35 @@ export function TransitMap() {
           Population Density
         </button>
 
-        {/* Draw toolbar — wrapped in relative so the badge can anchor to it */}
-        <div className="relative">
-        <div className="pointer-events-auto flex h-[52px] items-center gap-1 rounded-xl border border-[#D7D7D7] bg-white px-2 shadow-sm">
-          {/* Normal (default/view — no active tool) */}
-          <button
-            onClick={() => handleSetDrawMode("normal")}
-            title="Normal"
-            className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
-              drawMode === "normal" ? "bg-stone-100 text-stone-900" : "text-stone-400 hover:bg-stone-50 hover:text-stone-700"
-            }`}
-          >
-            {/* Arrow cursor */}
-            <svg viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px]">
-              <path d="M4 1.5 L4 17 L8 13 L11 19 L13 18 L10 12 L16 12 Z" />
-            </svg>
-          </button>
-
-          <div className="mx-1 h-6 w-px bg-stone-200" />
-
-          {/* Select neighbourhoods */}
-          <button
-            onClick={() => handleSetDrawMode("select")}
-            title="Select neighbourhoods"
-            className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
-              drawMode === "select" ? "bg-indigo-50 text-indigo-600" : "text-stone-400 hover:bg-stone-50 hover:text-stone-700"
-            }`}
-          >
-            {/* Cursor + dashed selection box — indicates click-to-select-region */}
-            <svg viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px]">
-              <path d="M2.5 1.5 L2.5 12.5 L5.5 9.5 L7.5 14 L9 13.3 L7 8.8 L11 8.8 Z" />
-              <rect x="11.5" y="11" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2 1.2" />
-            </svg>
-          </button>
-
-          <div className="mx-1 h-6 w-px bg-stone-200" />
-
-          {/* Polygon boundary */}
-          <button
-            onClick={() => handleSetDrawMode("boundary")}
-            title="Draw boundary"
-            className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
-              drawMode === "boundary" ? "bg-indigo-50 text-indigo-600" : "text-stone-400 hover:bg-stone-50 hover:text-stone-700"
-            }`}
-          >
-            {/* Dashed polygon with vertex dots */}
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="h-4 w-4">
-              <polygon points="10,2 17,6.5 14.5,16 5.5,16 3,6.5" strokeWidth="1.6" strokeLinejoin="round" strokeDasharray="2.5 1.5" />
-              <circle cx="10" cy="2" r="1.4" fill="currentColor" stroke="none" />
-              <circle cx="17" cy="6.5" r="1.4" fill="currentColor" stroke="none" />
-              <circle cx="14.5" cy="16" r="1.4" fill="currentColor" stroke="none" />
-              <circle cx="5.5" cy="16" r="1.4" fill="currentColor" stroke="none" />
-              <circle cx="3" cy="6.5" r="1.4" fill="currentColor" stroke="none" />
-            </svg>
-          </button>
-
-          {/* Clear button — visible when there's a drawn boundary or selected neighbourhoods */}
-          {hasSelection && (
-            <>
-              <div className="mx-1 h-6 w-px bg-stone-200" />
-              <button
-                onClick={handleClearAll}
-                title="Clear selection"
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-stone-400 transition-all hover:bg-red-50 hover:text-red-500"
-              >
-                <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                  <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 1 0 .23 1.482l.149-.022.841 10.518A2.75 2.75 0 0 0 7.596 19h4.807a2.75 2.75 0 0 0 2.742-2.53l.841-10.52.149.023a.75.75 0 0 0 .23-1.482A41.03 41.03 0 0 0 14 4.193v-.443A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 0-1.5.06l.3 7.5a.75.75 0 1 0 1.5-.06l-.3-7.5Zm4.34.06a.75.75 0 1 0-1.5-.06l-.3 7.5a.75.75 0 1 0 1.5.06l.3-7.5Z" clipRule="evenodd" />
-                </svg>
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Drawing hint — shown while actively drawing a polygon */}
-        {drawMode === "boundary" && (
-          <div className="pointer-events-auto absolute top-0 left-full ml-2 flex h-[52px] items-center gap-3 whitespace-nowrap rounded-xl border border-stone-200 bg-white px-4 text-sm text-stone-500 shadow-sm">
-            <span>Double-click to finish</span>
-            <span className="h-4 w-px bg-stone-200" />
-            <button
-              onClick={() => handleSetDrawMode("normal")}
-              className="font-medium text-stone-700 hover:text-red-500 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-
-        {/* Selection badge — absolutely anchored to the right of the toolbar, doesn't shift layout */}
-        {selectedNeighbourhoods.size > 0 && (
-          <div className="pointer-events-auto absolute top-0 left-full ml-2 flex h-[52px] items-center whitespace-nowrap rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-medium text-indigo-700 shadow-sm">
-            {selectedNeighbourhoods.size} neighbourhood{selectedNeighbourhoods.size !== 1 ? "s" : ""} selected
-          </div>
-        )}
-        </div>
+        {/* Generate button */}
+        <button
+          onClick={handleGenerate}
+          disabled={isGenerating}
+          className="pointer-events-auto flex h-[52px] w-[52px] items-center justify-center rounded-full border border-[#D7D7D7] bg-white text-lg shadow-sm transition-all hover:bg-stone-50 disabled:opacity-50"
+          title="Generate New Line"
+        >
+          <span className={isGenerating ? "inline-block animate-spin" : ""}>✦</span>
+        </button>
       </div>
 
-      {/* Side panel — only one shown at a time to prevent overlap */}
+      {/* TTC route panel */}
       <div
         className={`pointer-events-none absolute top-10 right-9 bottom-10 flex items-stretch transition-transform duration-300 ease-in-out ${
-          selectedRoute || showGeneratedPanel ? "translate-x-0" : "translate-x-[calc(100%+2.25rem)]"
+          selectedRoute ? "translate-x-0" : "translate-x-[calc(100%+2.25rem)]"
         }`}
       >
-        {selectedRoute ? (
+        {selectedRoute && (
           <RoutePanel route={selectedRoute} onClose={() => setSelectedRoute(null)} />
-        ) : showGeneratedPanel ? (
+        )}
+      </div>
+
+      {/* Generated route stats panel */}
+      <div
+        className={`pointer-events-none absolute top-10 right-9 bottom-10 flex items-stretch transition-transform duration-300 ease-in-out ${
+          showGeneratedPanel ? "translate-x-0" : "translate-x-[calc(100%+2.25rem)]"
+        }`}
+      >
+        {showGeneratedPanel && (
           <GeneratedRoutePanel
             route={generatedRoute}
             disabledStops={disabledStops}
@@ -1180,22 +731,9 @@ export function TransitMap() {
             onClose={() => setGeneratedRoute(null)}
             onRegenerate={handleGenerate}
           />
-        ) : null}
+        )}
       </div>
 
-      {/* Generate Route — bottom centre, only visible when an area is selected */}
-      {hasSelection && (
-        <div className="pointer-events-none absolute bottom-16 left-0 right-0 flex justify-center">
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className="pointer-events-auto flex h-[52px] items-center gap-3 rounded-xl bg-stone-900 px-8 text-base font-medium text-white shadow-lg transition-all hover:bg-stone-800 disabled:opacity-50"
-          >
-            <span className={`text-xl ${isGenerating ? "inline-block animate-spin" : ""}`}>✦</span>
-            {isGenerating ? "Generating…" : "Generate Route"}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

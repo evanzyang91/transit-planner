@@ -66,6 +66,8 @@ yarn-error.log*
 *.geojson
 filtered_output.csv
 sorted_output.csv
+2021_92-151_X.csv 
+2021_92-151_X_filtered.csv 
 
 # Optional: uncomment if you don't commit sqlc-generated Go
 # db/db/*.go
