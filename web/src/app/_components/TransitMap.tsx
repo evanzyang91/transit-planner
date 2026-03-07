@@ -9,6 +9,7 @@ type DrawMode = "normal" | "select" | "boundary";
 
 import {
   GENERATED_ROUTES,
+  NEIGHBOURHOOD_DATA,
   POPULATION_POINTS,
   ROUTES,
   type GeneratedRoute,
@@ -58,6 +59,105 @@ function StatBar({ value, max, color }: { value: number; max: number; color: str
         className="h-1.5 rounded-full"
         style={{ width: `${(value / max) * 100}%`, background: color }}
       />
+    </div>
+  );
+}
+
+// ─── neighbourhood panel ──────────────────────────────────────────────────────
+
+const TRAFFIC_COLOR: Record<string, string> = {
+  "Low": "#22c55e",
+  "Moderate": "#f59e0b",
+  "High": "#f97316",
+  "Very High": "#ef4444",
+};
+
+function NeighbourhoodPanel({
+  id,
+  name,
+  onClose,
+}: {
+  id: string;
+  name: string;
+  onClose: () => void;
+}) {
+  const data = NEIGHBOURHOOD_DATA[id];
+  const transitLines = ROUTES.filter((r) => data?.transitLines.includes(r.id));
+
+  return (
+    <div className="pointer-events-auto w-72 overflow-hidden rounded-2xl bg-white shadow-2xl" style={{ border: "0.93px solid #BEB7B4" }}>
+      {/* Preview image */}
+      <div className="relative h-36">
+        <img src="/placeholder.png" alt="Neighbourhood view" className="h-full w-full object-cover" />
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 flex h-7 w-7 items-center justify-center rounded-full bg-white/80 text-stone-500 hover:bg-white hover:text-stone-800"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="px-5 pt-4 pb-5 space-y-4">
+        <h2 className="text-base font-semibold text-stone-800">{name}</h2>
+
+        {data ? (
+          <>
+            <div className="space-y-2.5">
+              {/* Traffic */}
+              <div className="flex justify-between text-xs">
+                <span className="text-stone-500">Traffic levels</span>
+                <span className="font-semibold" style={{ color: TRAFFIC_COLOR[data.trafficLevel] }}>
+                  {data.trafficLevel}
+                </span>
+              </div>
+
+              {/* Employment */}
+              <div className="flex justify-between text-xs">
+                <span className="text-stone-500">Employment density</span>
+                <span className="font-semibold text-stone-800">{data.employmentDensity}</span>
+              </div>
+
+              {/* Population */}
+              <div className="flex justify-between text-xs">
+                <span className="text-stone-500">Population density</span>
+                <span className="font-semibold text-stone-800">{data.populationDensity.toLocaleString()} / km²</span>
+              </div>
+
+              {/* Connectivity */}
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-stone-500">How connected it is</span>
+                  <span className="font-semibold text-stone-800">{data.connectivityScore}/10</span>
+                </div>
+                <StatBar value={data.connectivityScore} max={10} color="#6366f1" />
+              </div>
+            </div>
+
+            {/* Transit lines */}
+            {transitLines.length > 0 && (
+              <div>
+                <p className="mb-2 text-[11px] font-semibold tracking-widest text-stone-400 uppercase">
+                  Lines in the area
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {transitLines.map((r) => (
+                    <span
+                      key={r.id}
+                      className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
+                      style={{ background: r.color + "22", color: r.color }}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: r.color }} />
+                      {r.shortName}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-stone-400">No data available</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -313,6 +413,7 @@ export function TransitMap() {
   const [drawMode, setDrawMode] = useState<DrawMode>("normal");
   const [hasBoundary, setHasBoundary] = useState(false);
   const [selectedNeighbourhoods, setSelectedNeighbourhoods] = useState<Set<string>>(new Set());
+  const [focusedNeighbourhood, setFocusedNeighbourhood] = useState<{ id: string; name: string } | null>(null);
   const genIdxRef = useRef(0);
 
   // Refs for use inside map event callbacks (avoid stale closure)
@@ -491,14 +592,19 @@ export function TransitMap() {
           type: "fill",
           source: "neighbourhoods",
           paint: {
-            "fill-color": "#6366f1",
+            "fill-color": [
+              "case",
+              ["boolean", ["feature-state", "selected"], false],
+              "#6366f1",
+              "#94a3b8",
+            ],
             "fill-opacity": [
               "case",
               ["boolean", ["feature-state", "selected"], false],
-              0.14,
+              0.12,
               ["boolean", ["feature-state", "hovered"], false],
               0.06,
-              0.0,
+              0.02,
             ],
           },
         },
@@ -515,19 +621,19 @@ export function TransitMap() {
               "case",
               ["boolean", ["feature-state", "selected"], false],
               "#6366f1",
-              "#9ca3af",
+              "#94a3b8",
             ],
             "line-width": [
               "case",
               ["boolean", ["feature-state", "selected"], false],
-              2,
+              1.5,
               0.5,
             ],
             "line-opacity": [
               "case",
               ["boolean", ["feature-state", "selected"], false],
-              0.8,
-              0.35,
+              0.6,
+              0.3,
             ],
           },
         },
@@ -568,11 +674,13 @@ export function TransitMap() {
         if (justCompletedBoundaryRef.current) return;
         const id = e.features?.[0]?.properties?.id as string | undefined;
         if (!id) return;
+        const name = e.features?.[0]?.properties?.name as string | undefined;
 
         const current = selectedNeighbourhoodsRef.current;
 
         if (current.has(id)) {
-          // Deselect this neighbourhood
+          // Deselect this neighbourhood — clear the panel
+          setFocusedNeighbourhood(null);
           map.setFeatureState({ source: "neighbourhoods", id }, { selected: false });
           setSelectedNeighbourhoods((prev) => {
             const next = new Set(prev);
@@ -580,6 +688,8 @@ export function TransitMap() {
             return next;
           });
         } else {
+          // Select — show panel for clicked neighbourhood
+          setFocusedNeighbourhood({ id, name: name ?? id });
           // Find BFS path from existing selection → new target, select everything in between
           const toAdd = findNeighbourhoodPath(current, id);
           toAdd.forEach((nid) => {
@@ -898,8 +1008,8 @@ export function TransitMap() {
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
 
-      {/* TTC Lines legend + generate button — top left */}
-      <div className="absolute top-5 left-5 flex flex-col gap-2">
+      {/* TTC Lines legend + neighbourhood panel — top left */}
+      <div className="absolute top-5 left-5 flex flex-col gap-4">
         <div className="rounded-xl border border-[#D7D7D7] bg-white px-6 py-5 shadow-sm">
           <p className="mb-3 text-lg font-bold text-stone-800">
             TTC Lines
@@ -933,6 +1043,13 @@ export function TransitMap() {
           </ul>
         </div>
 
+        {focusedNeighbourhood && (
+          <NeighbourhoodPanel
+            id={focusedNeighbourhood.id}
+            name={focusedNeighbourhood.name}
+            onClose={() => setFocusedNeighbourhood(null)}
+          />
+        )}
       </div>
 
       {/* Top-center toolbar */}
@@ -964,7 +1081,7 @@ export function TransitMap() {
           >
             {/* Arrow cursor */}
             <svg viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px]">
-              <path d="M3 2 L3 16.5 L7 13 L10 19 L12 18 L9 12 L15 12 Z" />
+              <path d="M4 1.5 L4 17 L8 13 L11 19 L13 18 L10 12 L16 12 Z" />
             </svg>
           </button>
 
@@ -1046,24 +1163,15 @@ export function TransitMap() {
         </div>
       </div>
 
-      {/* TTC route panel */}
+      {/* Side panel — only one shown at a time to prevent overlap */}
       <div
         className={`pointer-events-none absolute top-10 right-9 bottom-10 flex items-stretch transition-transform duration-300 ease-in-out ${
-          selectedRoute ? "translate-x-0" : "translate-x-[calc(100%+2.25rem)]"
+          selectedRoute || showGeneratedPanel ? "translate-x-0" : "translate-x-[calc(100%+2.25rem)]"
         }`}
       >
-        {selectedRoute && (
+        {selectedRoute ? (
           <RoutePanel route={selectedRoute} onClose={() => setSelectedRoute(null)} />
-        )}
-      </div>
-
-      {/* Generated route stats panel */}
-      <div
-        className={`pointer-events-none absolute top-10 right-9 bottom-10 flex items-stretch transition-transform duration-300 ease-in-out ${
-          showGeneratedPanel ? "translate-x-0" : "translate-x-[calc(100%+2.25rem)]"
-        }`}
-      >
-        {showGeneratedPanel && (
+        ) : showGeneratedPanel ? (
           <GeneratedRoutePanel
             route={generatedRoute}
             disabledStops={disabledStops}
@@ -1072,7 +1180,7 @@ export function TransitMap() {
             onClose={() => setGeneratedRoute(null)}
             onRegenerate={handleGenerate}
           />
-        )}
+        ) : null}
       </div>
 
       {/* Generate Route — bottom centre, only visible when an area is selected */}
