@@ -17,8 +17,6 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.2",
-    "@repo/web_db": "0.1.0",
-    "@repo/web_utils": "0.1.0",
     "@t3-oss/env-nextjs": "^0.12.0",
     "@tanstack/react-query": "^5.69.0",
     "@trpc/client": "^11.0.0",
@@ -32,7 +30,8 @@
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1",
     "superjson": "^2.2.1",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "tailwindcss": "^4.0.15"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
@@ -48,7 +47,6 @@
     "postcss": "^8.5.3",
     "prettier": "^3.5.3",
     "prettier-plugin-tailwindcss": "^0.6.11",
-    "tailwindcss": "^4.0.15",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.27.0"
   },
