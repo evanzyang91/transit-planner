@@ -103,7 +103,9 @@ export function stopsToGeoJSON(route: Route): GeoJSON.FeatureCollection<GeoJSON.
       const labelAnchor = (prev || next) && Math.abs(dy) > Math.abs(dx) ? "left" : "top";
       return {
         type: "Feature",
-        properties: { name: s.name, routeId: route.id, color: route.color, labelAnchor },
+        // stopId is what click/drag handlers address the stop by — `name` here
+        // is for the label layer only. Two stops on one route can share a name.
+        properties: { stopId: s.id, name: s.name, routeId: route.id, color: route.color, labelAnchor },
         geometry: { type: "Point", coordinates: s.coords },
       };
     }),
