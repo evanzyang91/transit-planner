@@ -1,7 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Route } from "~/app/map/transit-data";
+import type { Route, Stop } from "~/app/map/transit-data";
+import { isSameStation, transferExclusionKey } from "~/app/map/stop-identity";
+
+/**
+ * Routes (other than `fromRoute`) that genuinely serve this stop.
+ *
+ * A shared name is not enough — the stops must also be co-located. Name-only
+ * matching reported 853 false transfers across the built-in data, e.g. Line 1
+ * "Eglinton" against a GO station 13.9 km away.
+ */
+function connectedRoutesFor(
+  stop: Stop,
+  fromRoute: Route,
+  allRoutes: Route[],
+  exclusions: Set<string>,
+): Route[] {
+  return allRoutes.filter((r) => {
+    if (r.id === fromRoute.id) return false;
+    if (exclusions.has(transferExclusionKey(fromRoute.id, r.id, stop.name))) return false;
+    return r.stops.some((s) => isSameStation(s, stop));
+  });
+}
 
 function parseHeadway(frequency: string, servicePattern?: Route["servicePattern"]): number {
   if (servicePattern?.headwayMinutes) return servicePattern.headwayMinutes;
@@ -21,20 +42,20 @@ function haversineKm(a: [number, number], b: [number, number]): number {
 }
 
 function scoreStation(
-  stopName: string,
+  stop: Stop,
   route: Route,
   allRoutes: Route[],
   stationPopulations: Map<string, number>,
+  exclusions: Set<string>,
 ) {
   const headway = parseHeadway(route.frequency, route.servicePattern);
   const frequency = Math.max(0, Math.min(100, Math.round(100 - headway * 2)));
 
-  const transferCount = allRoutes.filter(
-    (r) => r.id !== route.id && r.stops.some((s) => s.name === stopName),
-  ).length;
+  // Co-located transfers only — a name match 13 km away used to inflate this.
+  const transferCount = connectedRoutesFor(stop, route, allRoutes, exclusions).length;
   const connectivity = Math.min(100, transferCount * 33 + (transferCount > 0 ? 1 : 0));
 
-  const rawPop = stationPopulations.get(stopName);
+  const rawPop = stationPopulations.get(stop.name);
   const allPops = [...stationPopulations.values()].filter((v) => v > 0);
   let demand = 50;
   if (rawPop !== undefined && allPops.length > 0) {
@@ -67,7 +88,7 @@ function scoreRoute(route: Route, allRoutes: Route[]) {
 
 export function RoutePanel({
   route,
-  selectedStop,
+  selectedStopId,
   stationPopulations,
   onDeleteStop,
   onDeleteLine,
@@ -76,11 +97,13 @@ export function RoutePanel({
   onClose,
   allRoutes = [],
   pedestrianConnections = [],
+  transferExclusions,
 }: {
   route: Route;
-  selectedStop: string | null;
+  /** Id (not name) of the highlighted stop — names repeat within a route. */
+  selectedStopId: string | null;
   stationPopulations: Map<string, number>;
-  onDeleteStop: (name: string) => void;
+  onDeleteStop: (stopId: string) => void;
   onDeleteLine?: () => void;
   /** Called when the user requests road-snapping. Resolves when done, throws on error. */
   onSnapToRoads?: () => Promise<void>;
@@ -89,14 +112,17 @@ export function RoutePanel({
   onClose: () => void;
   allRoutes?: Route[];
   pedestrianConnections?: { route: Route; stopName: string }[];
+  /** Transfers the user dismissed in the station popup — hidden here too. */
+  transferExclusions?: Set<string>;
 }) {
+  const exclusions = transferExclusions ?? new Set<string>();
   const [snapState, setSnapState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [snapError, setSnapError] = useState<string | null>(null);
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     setExpandedRoutes(new Set());
-  }, [selectedStop, route.id]);
+  }, [selectedStopId, route.id]);
 
   function toggleRouteSection(routeId: string) {
     setExpandedRoutes((prev) => {
@@ -106,26 +132,37 @@ export function RoutePanel({
       return next;
     });
   }
+  // Resolve the id once. Everything below that needs a *name* (scoring,
+  // population lookup, the title) reads it from here — those maps are still
+  // name-keyed, but which stop we mean is now unambiguous.
+  const selectedStopObj = selectedStopId
+    ? route.stops.find((s) => s.id === selectedStopId) ?? null
+    : null;
+  const selectedStop = selectedStopObj?.name ?? null;
+
   const routeScore = !selectedStop && allRoutes.length > 0 ? scoreRoute(route, allRoutes) : null;
   const stationScore =
-    selectedStop && allRoutes.length > 0
-      ? scoreStation(selectedStop, route, allRoutes, stationPopulations)
+    selectedStopObj && allRoutes.length > 0
+      ? scoreStation(selectedStopObj, route, allRoutes, stationPopulations, exclusions)
       : null;
   const rawPop = selectedStop ? stationPopulations.get(selectedStop) : undefined;
   const popServed = rawPop !== undefined ? rawPop : undefined;
   const allStops = route.stops;
   const isCustomLine = !!onDeleteLine;
 
-  // Routes (other than this one) that share the selected stop — used for transfer indicators
-  const transferRoutes = selectedStop
-    ? allRoutes.filter((r) => r.id !== route.id && r.stops.some((s) => s.name === selectedStop))
+  // Routes (other than this one) that genuinely serve the selected stop —
+  // co-located, not merely same-named. Used for the transfer indicators.
+  const transferRoutes = selectedStopObj
+    ? connectedRoutesFor(selectedStopObj, route, allRoutes, exclusions)
     : [];
 
-  // Set of stop names that are transfer nodes (shared with any other route)
-  const transferStopNames = new Set(
+  // Stop ids on this route that are transfer nodes (shared with another route).
+  // Keyed by id, not name, so one of two same-named stops can be a transfer
+  // while the other isn't.
+  const transferStopIds = new Set(
     allStops
-      .filter((s) => allRoutes.some((r) => r.id !== route.id && r.stops.some((os) => os.name === s.name)))
-      .map((s) => s.name)
+      .filter((s) => connectedRoutesFor(s, route, allRoutes, exclusions).length > 0)
+      .map((s) => s.id)
   );
 
   return (
@@ -316,10 +353,10 @@ export function RoutePanel({
         </div>
       )}
 
-      {isCustomLine && selectedStop && (
+      {isCustomLine && selectedStopId && selectedStopObj && (
         <div className="mx-5 mt-4">
           <button
-            onClick={() => onDeleteStop(selectedStop)}
+            onClick={() => onDeleteStop(selectedStopId)}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
           >
             <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="currentColor">
@@ -419,10 +456,10 @@ export function RoutePanel({
             {[route, ...transferRoutes].map((r) => {
               const isExpanded = expandedRoutes.has(r.id);
               const rStops = r.stops;
-              const rTransferNames = new Set(
+              const rTransferIds = new Set(
                 rStops
-                  .filter((s) => allRoutes.some((ar) => ar.id !== r.id && ar.stops.some((os) => os.name === s.name)))
-                  .map((s) => s.name),
+                  .filter((s) => connectedRoutesFor(s, r, allRoutes, exclusions).length > 0)
+                  .map((s) => s.id),
               );
               return (
                 <div key={r.id} className="overflow-hidden rounded-xl border border-stone-100">
@@ -459,7 +496,7 @@ export function RoutePanel({
                               <span className={`py-1.5 pl-4 text-sm ${stop.name === selectedStop ? "font-bold text-stone-900" : "text-stone-700"}`}>
                                 {stop.name}
                               </span>
-                              {rTransferNames.has(stop.name) && (
+                              {rTransferIds.has(stop.id) && (
                                 <span className="ml-1.5 shrink-0 rounded bg-stone-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-stone-400">
                                   Transfer
                                 </span>
@@ -490,15 +527,17 @@ export function RoutePanel({
             <p className="mb-2 text-xs font-semibold text-stone-500">Stops ({allStops.length})</p>
             <ol className="relative border-l-2" style={{ borderColor: route.color + "44" }}>
               {allStops.map((stop, i) => {
-                const isTransfer = transferStopNames.has(stop.name);
+                const isTransfer = transferStopIds.has(stop.id);
                 return (
-                  <li key={`${i}-${stop.name}`} className="group mb-0 flex items-center justify-between">
+                  <li key={stop.id ?? `${i}-${stop.name}`} className="group mb-0 flex items-center justify-between">
                     <div className="flex items-center min-w-0">
                       <span
                         className="absolute -left-[5px] h-2.5 w-2.5 rounded-full border-2 bg-white"
                         style={{ borderColor: i === 0 || i === allStops.length - 1 ? route.color : route.color + "88" }}
                       />
-                      <span className={`py-1.5 pl-4 text-sm ${stop.name === selectedStop ? "font-bold text-stone-900" : "text-stone-700"}`}>
+                      {/* Highlight by id: two stops on this line can share a name,
+                          and only the clicked one should go bold. */}
+                      <span className={`py-1.5 pl-4 text-sm ${stop.id === selectedStopId ? "font-bold text-stone-900" : "text-stone-700"}`}>
                         {stop.name}
                       </span>
                       {isTransfer && (
