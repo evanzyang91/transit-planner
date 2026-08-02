@@ -63,12 +63,14 @@ type PlansPanelProps = {
   open: boolean;
   routes: Route[];
   hiddenRoutes: Set<string>;
+  /** Dismissed transfers, saved and restored alongside the routes. */
+  transferExclusions: Set<string>;
   currentPlanId: string | null;
   planIsDirty: boolean;
   authUser: { sub: string; name?: string; email?: string } | null | undefined;
   authLoading: boolean;
   onClose: () => void;
-  onPlanLoaded: (routes: Route[], hiddenRoutes: Set<string>, planId: string) => void;
+  onPlanLoaded: (routes: Route[], hiddenRoutes: Set<string>, planId: string, transferExclusions: Set<string>) => void;
   onCurrentPlanIdChange: (id: string | null) => void;
   onMarkSaved: (savedRoutes: Route[]) => void;
   onNewPlan: () => void;
@@ -79,6 +81,7 @@ export function PlansPanel({
   open,
   routes,
   hiddenRoutes,
+  transferExclusions,
   currentPlanId,
   planIsDirty,
   authUser,
@@ -123,7 +126,12 @@ export function PlansPanel({
       const res = await fetch(`/api/sessions/${planId}`);
       if (!res.ok) return;
       const plan = (await res.json()) as PlanSession;
-      onPlanLoaded(plan.routes, new Set(plan.hiddenRoutes), plan.id);
+      onPlanLoaded(
+        plan.routes,
+        new Set(plan.hiddenRoutes),
+        plan.id,
+        new Set(plan.transferExclusions ?? []),
+      );
     } finally {
       setActionLoading(null);
     }
@@ -139,7 +147,11 @@ export function PlansPanel({
       const res = await fetch(`/api/sessions/${currentPlanId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ routes, hiddenRoutes: [...hiddenRoutes] }),
+        body: JSON.stringify({
+          routes,
+          hiddenRoutes: [...hiddenRoutes],
+          transferExclusions: [...transferExclusions],
+        }),
       });
       if (res.ok) {
         onMarkSaved(routes);
@@ -154,7 +166,12 @@ export function PlansPanel({
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, routes, hiddenRoutes: [...hiddenRoutes] }),
+      body: JSON.stringify({
+        name,
+        routes,
+        hiddenRoutes: [...hiddenRoutes],
+        transferExclusions: [...transferExclusions],
+      }),
     });
     if (!res.ok) throw new Error("Save failed");
     const created = (await res.json()) as PlanSession;
@@ -212,7 +229,10 @@ export function PlansPanel({
 
   return (
     <>
-      <div className="flex h-full w-72 flex-col rounded-xl border border-[#D7D7D7] bg-white shadow-sm dark:border-white/10 dark:bg-[#1c1c1e]">
+      {/* pointer-events-auto lives here, on the panel itself — same as
+          RoutePanel/SimulationPanel/GeneratedRoutePanel. Relying on the parent
+          wrapper to enable hits is what made this panel click-through once. */}
+      <div className="pointer-events-auto flex h-full w-72 flex-col rounded-xl border border-[#D7D7D7] bg-white shadow-sm dark:border-white/10 dark:bg-[#1c1c1e]">
         {/* Header */}
         <div className="flex shrink-0 items-start justify-between border-b border-stone-100 px-4 pb-3 pt-4 dark:border-white/5">
           <div className="flex items-start gap-2">
