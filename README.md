@@ -55,6 +55,8 @@ Agents use tool calls to query real TTC stop data and enforce planning rules: 80
 | Auth | Auth0 via NextAuth v5 |
 | Database | Supabase + PostGIS |
 | Voice | ElevenLabs TTS |
+| Testing | Vitest |
+| LLM tracing | Langfuse |
 | Deployment | Docker, Vercel |
 
 ## Local Development
@@ -89,10 +91,38 @@ All commands can be run from the repo root or `web/`:
 ```bash
 npm run dev            # Next.js + Turbopack
 npm run build          # Production build
+npm test               # Vitest
+npm run check          # validate data + test + lint + typecheck
 npm run lint           # ESLint
 npm run typecheck      # TypeScript
 npm run format:write   # Prettier
 ```
+
+### Tests
+
+```bash
+npm test               # 44 tests
+npm run test:watch     # watch mode
+npm run validate:routes # check generated-routes.json
+```
+
+Covers map geometry, stop identity/transfer detection, and gap ranking.
+
+Geometry tests run against a fixture of **real** census coordinates, not generated
+ones. An earlier suite of synthetic tests passed while the code was badly broken —
+it assumed a regular grid the real data doesn't have. Use real fixtures here.
+
+Route data lives in `generated-routes.json` and isn't typechecked, so
+`validate-routes.mjs` checks it instead: unique ids, valid hex colours, every
+stop a finite `[lng, lat]` inside Toronto.
+
+### CI
+
+`.github/workflows/ci.yml` runs tests + route validation on every PR. No secrets
+needed — tests use dummy env values and make no network calls.
+
+`lint` and `typecheck` aren't gated yet: they report 130 and 2 pre-existing
+failures. Clear those first, then add them as steps.
 
 ## Environment Variables
 
@@ -116,7 +146,15 @@ DISCORD_WEBHOOK_URL=                # fallback/general Discord notifications
 DISCORD_REGULAR_VISITS_WEBHOOK_URL= # regular visit notifications
 DISCORD_REFERRAL_VISITS_WEBHOOK_URL= # referral visit notifications
 DISCORD_BUG_REPORTS_WEBHOOK_URL=    # bug report feedback notifications
+LANGFUSE_PUBLIC_KEY=                # LLM tracing (https://cloud.langfuse.com)
+LANGFUSE_SECRET_KEY=
+LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
+LANGFUSE_TRACING_DEV=false          # "true" to send traces from local dev
 ```
+
+Tracing is off unless both Langfuse keys are set **and** you're in production or
+`LANGFUSE_TRACING_DEV=true`. Traces nest one span per LLM call and per tool call,
+with token usage for cost.
 
 ## Project Structure
 
@@ -130,6 +168,11 @@ transit-planner/
 │       │   ├── docs/               # Documentation + AI chat
 │       │   └── api/                # API routes (council, simulation, AI, data)
 │       ├── server/                 # Council orchestration, AI providers, Supabase
+│       │   ├── tracing.ts          # Langfuse setup
+│       │   └── map-data/           # Census raster, gap ranking, map tools
+│       ├── map/
+│       │   ├── transit-data.ts     # Route types + TTC/GO lines
+│       │   └── generated-routes.json  # 211 bus/streetcar/subway routes
 │       └── lib/                    # Shared utilities
 ├── can_pop.geojson                 # Canadian population dataset (90MB)
 ├── Dockerfile.web
