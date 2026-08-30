@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const isBugReport = category.toLowerCase() === "bug report";
   const webhookUrl = isBugReport
-    ? (env.DISCORD_BUG_REPORTS_WEBHOOK_URL ?? env.DISCORD_WEBHOOK_URL)
+    ? env.DISCORD_BUG_REPORTS_WEBHOOK_URL
     : env.DISCORD_WEBHOOK_URL;
 
   if (!webhookUrl) {
