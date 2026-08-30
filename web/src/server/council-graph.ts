@@ -14,7 +14,20 @@ import {
   type SimSummary,
 } from "./council";
 import { runSimulation } from "./simulation";
-import { DEMAND_TOOLS, handleDemandTool } from "./council-demand-tools";
+// The shared grounded tool registry (also used by the map assistant): one data
+// layer, one set of numbers — the council and the UI can no longer disagree.
+import {
+  ArtifactStore,
+  RANK_SERVICE_AREAS_TOOL,
+  QUERY_POPULATION_TOOL,
+  ESTIMATE_RIDERSHIP_TOOL,
+  DESCRIBE_LOCATION_TOOL,
+  runReadTool,
+  type ToolContext,
+} from "./map-data/tools";
+import { networkFromStops } from "./map-data/network";
+import { populationInRadius } from "./map-data/census";
+import { neighbourhoodRing, ringCentroid } from "./map-data/geo";
 import { haversineKm } from "~/app/map/geo-utils";
 
 const HAIKU = "claude-haiku-4-5-20251001";
@@ -232,6 +245,11 @@ const State = Annotation.Root({
   contestedStops: defaulted<string[]>(() => []),
   nextPlanner: defaulted<"plannerA" | "plannerB" | null>(() => null),
   nextCritic: defaulted<"nimby" | "pr" | null>(() => null),
+  // Critics who have SPOKEN this ballot round. The nimby↔pr edges route on
+  // this, not on ballot presence: a critic whose cast_votes JSON fails to
+  // parse still counts as done, so the round always reaches tally instead of
+  // ping-ponging until the recursion limit (observed live 2026-07).
+  balloted: defaulted<Array<"nimby" | "pr">>(() => []),
   revisionCount: defaulted<number>(() => 0),
   commissionDecision: defaulted<"approve" | "reject" | null>(() => null),
   prScore: defaulted<number | undefined>(() => undefined),
@@ -382,21 +400,54 @@ function allCandidateStops(state: CouncilState): string[] {
   return Array.from(new Set(names));
 }
 
-function buildDataBrief(neighbourhoods: string[], stationNames: string[]): string {
-  const parts: string[] = [];
-  if (neighbourhoods.length > 0) parts.push(`Target neighbourhoods: ${neighbourhoods.join(", ")}.`);
-  if (stationNames.length > 0) parts.push(`Stations to connect: ${stationNames.join(", ")}.`);
-  return parts.length > 0 ? parts.join("\n") : "No specific location data provided.";
+// The brief's demand section used to just echo the target names back — zero
+// data, so planners "resolved" locations from model memory. Now each target is
+// resolved server-side: catalogued neighbourhoods get real centroids + census
+// population; named stations get their actual coordinates from the network;
+// anything unresolvable is explicitly flagged so planners know they MUST look
+// it up with query_population instead of guessing.
+async function buildDataBrief(
+  neighbourhoods: string[],
+  stationNames: string[],
+  existingLines: ExistingStop[],
+): Promise<string> {
+  const lines: string[] = [];
+
+  for (const n of neighbourhoods.slice(0, 8)) {
+    const hood = neighbourhoodRing(n);
+    if (hood) {
+      const centroid = ringCentroid(hood.ring);
+      const pop = await populationInRadius([centroid[0], centroid[1]], 1.5);
+      lines.push(
+        `- ${hood.name}: centre [${centroid[0].toFixed(5)}, ${centroid[1].toFixed(5)}]` +
+          (pop ? `, census population within 1.5 km: ${pop.population.toLocaleString()}` : ", census data unavailable"),
+      );
+    } else {
+      lines.push(`- ${n}: not in the neighbourhood catalogue — locate it with query_population before placing stops there.`);
+    }
+  }
+
+  for (const s of stationNames.slice(0, 8)) {
+    const wanted = s.trim().toLowerCase();
+    const match = existingLines.find((es) => es.name.toLowerCase().includes(wanted) || wanted.includes(es.name.toLowerCase()));
+    lines.push(
+      match
+        ? `- Station ${match.name} (${match.route}): [${match.coords[0].toFixed(5)}, ${match.coords[1].toFixed(5)}]`
+        : `- Station ${s}: not found in the current network — verify its location with query_population before connecting to it.`,
+    );
+  }
+
+  return lines.length > 0 ? lines.join("\n") : "No specific location data provided — ground every stop with query_population.";
 }
 
-function buildBrief(input: Pick<CouncilState, "neighbourhoods" | "stations" | "lineType" | "extraContext" | "existingLines">): string {
+async function buildBrief(input: Pick<CouncilState, "neighbourhoods" | "stations" | "lineType" | "extraContext" | "existingLines">): Promise<string> {
   const typeStr = input.lineType ? `Mode preference: ${input.lineType}. ` : "";
   let brief =
     `# Planning Brief\n` +
     `Serve: ${input.neighbourhoods.join(", ") || "Toronto"}. ` +
     `Connect: ${input.stations.join(", ") || "None specified"}. ` +
     `${typeStr}\n\n` +
-    `## Stop demand data\n${buildDataBrief(input.neighbourhoods, input.stations)}`;
+    `## Resolved target data (server-computed — trust these coordinates)\n${await buildDataBrief(input.neighbourhoods, input.stations, input.existingLines)}`;
 
   if (input.existingLines.length > 0) {
     const byRoute: Record<string, string[]> = {};
@@ -571,15 +622,21 @@ async function streamRouteTurn(
   emit(config, { type: "agent_start", agent: ag.name, role: ag.role, color: ag.color });
   let full = "";
 
-  // Phase 0 — demand grounding. Agentic on providers exposing a read-tool loop;
-  // skipped gracefully otherwise (Gemini today) so those routes are no worse than before.
+  // Phase 0 — demand grounding via the shared registry. Agentic on providers
+  // exposing a read-tool loop; skipped gracefully otherwise.
   if (provider.streamMessageWithReadTools) {
     emit(config, { type: "status", text: `${ag.name} is researching real demand…` });
+    // Per-turn grounding context: the live network (user lines included) and a
+    // fresh artifact store. Tools resolve against exactly what's on the map.
+    const ctx: ToolContext = {
+      network: networkFromStops(state.existingLines),
+      artifacts: new ArtifactStore(),
+    };
     for await (const text of provider.streamMessageWithReadTools(
       state.sessions[ag.key]!,
-      "Before proposing, ground yourself in real data. Call query_demand for the target area and any corridor or stop you are weighing — read the census population and the exact coordinates of the densest blocks it returns, plus the nearest existing stations (for transfers and the 800 m rule). Briefly note the candidate coordinates you will anchor stops to. Keep this short.",
-      DEMAND_TOOLS,
-      (name, args) => handleDemandTool(name, args, state.existingLines),
+      "Before proposing, ground yourself in real data. Call rank_service_areas (order least_served) once to see where the current network fails the most people — strong corridors usually connect the worst gaps. Then call query_population for the corridor and any stop you are weighing: read the census population and the exact coordinates of the densest blocks, plus the nearest existing stations (for transfers and the 800 m rule). For stops you are seriously considering, call estimate_ridership to compare candidates on daily boardings, not just raw population. Briefly note the candidate coordinates you will anchor stops to. Keep this short.",
+      [RANK_SERVICE_AREAS_TOOL, QUERY_POPULATION_TOOL, ESTIMATE_RIDERSHIP_TOOL],
+      (name, args) => runReadTool(name, args, ctx),
       ag.model,
       ag.maxTokens,
     )) {
@@ -600,7 +657,7 @@ async function streamRouteTurn(
   let route: RouteResult | null = null;
   for await (const item of provider.streamMessageWithTool(
     state.sessions[ag.key]!,
-    "Now call the propose_route tool with your recommended route based on your analysis above. Reuse the exact coordinates you retrieved with query_demand wherever possible.",
+    "Now call the propose_route tool with your recommended route based on your analysis above. Reuse the exact coordinates you retrieved with query_population wherever possible.",
     PROPOSE_ROUTE_TOOL,
     ag.model,
     ag.maxTokens,
@@ -625,21 +682,66 @@ async function streamRouteTurn(
   return { full, route };
 }
 
+// Critic turn. One agent bubble, three phases (mirrors streamRouteTurn):
+//   0. fact grounding — describe_location / query_population on the stops the
+//      critic will name, so "who lives there / what corner is affected" comes
+//      from data instead of the model's memory of Toronto
+//   1. written critique
+//   2. forced structured cast_votes
 async function streamVoteTurn(
   config: LangGraphRunnableConfig,
   state: CouncilState,
   ag: Agent,
   prompt: string,
 ): Promise<{ full: string; ballot: Ballot | null }> {
-  const full = await streamTextTurn(config, state, ag, prompt);
+  const provider = getProvider(state.providerName);
+  emit(config, { type: "agent_start", agent: ag.name, role: ag.role, color: ag.color });
+  let full = "";
+
+  // Phase 0 — ground the critique in real places. The critic gets the exact
+  // stop coordinates so its tool calls land where the stops actually are.
+  const currentRoute = state.rebuttalRoute ?? state.routeB ?? state.routeA;
+  if (provider.streamMessageWithReadTools && currentRoute) {
+    emit(config, { type: "status", text: `${ag.name} is checking the facts on the ground…` });
+    const ctx: ToolContext = {
+      network: networkFromStops(state.existingLines),
+      artifacts: new ArtifactStore(),
+    };
+    const stopsJson = JSON.stringify(currentRoute.stops.map((s) => ({ name: s.name, coords: s.coords })));
+    for await (const text of provider.streamMessageWithReadTools(
+      state.sessions[ag.key]!,
+      `Candidate stops with exact coordinates: ${stopsJson}\n\n` +
+        "Before critiquing, verify the ground truth for the 2–3 stops you intend to challenge: call describe_location on each stop's coordinates (neighbourhood, nearest existing stop, real population nearby). Use query_population if you need the demand picture. At most 3 tool calls, then one short line of noted facts per stop — no conclusions yet.",
+      [DESCRIBE_LOCATION_TOOL, QUERY_POPULATION_TOOL],
+      (name, args) => runReadTool(name, args, ctx),
+      ag.model,
+      ag.maxTokens,
+    )) {
+      full += text;
+      emit(config, { type: "agent_text", agent: ag.name, text });
+    }
+  }
+
+  // Phase 1 — written critique.
+  for await (const text of provider.streamMessage(state.sessions[ag.key]!, prompt, ag.model, ag.maxTokens)) {
+    full += text;
+    emit(config, { type: "agent_text", agent: ag.name, text });
+  }
+  const quote = extractQuote(full);
+  if (quote) emit(config, { type: "agent_quote", agent: ag.name, text: quote });
+
+  // Phase 2 — structured ballot. Gets its OWN token headroom: the ballot JSON
+  // streams as tool-input fragments, and if max_tokens cuts it off mid-JSON the
+  // parse fails silently → null ballot (this looped the graph to death live —
+  // critics' 300-token chat budget is far too tight for a grounded ballot).
   let ballot: Ballot | null = null;
   const candidates = allCandidateStops(state).join(", ") || "(no candidate stops)";
-  for await (const item of getProvider(state.providerName).streamMessageWithTool(
+  for await (const item of provider.streamMessageWithTool(
     state.sessions[ag.key]!,
-    `Now call cast_votes. Only use exact stop names from this candidate list: ${candidates}`,
+    `Now call cast_votes. Only use exact stop names from this candidate list: ${candidates}. Keep each reason under 15 words.`,
     CAST_VOTES_TOOL,
     ag.model,
-    ag.maxTokens,
+    Math.max(ag.maxTokens, 800),
   )) {
     if (item.type === "text") {
       emit(config, { type: "agent_text", agent: ag.name, text: item.text });
@@ -647,13 +749,17 @@ async function streamVoteTurn(
       ballot = item.input as unknown as Ballot;
     }
   }
+  if (!ballot) {
+    // Make the failure visible instead of silently counting "no objections".
+    emit(config, { type: "status", text: `${ag.name}'s ballot could not be parsed — counted as no objections.` });
+  }
   emit(config, { type: "agent_end", agent: ag.name });
   return { full, ballot };
 }
 
 async function setupNode(state: CouncilState, config: LangGraphRunnableConfig) {
   emit(config, { type: "status", text: "Assembling transit data…" });
-  const brief = buildBrief(state);
+  const brief = await buildBrief(state);
   emit(config, { type: "status", text: "Creating LangGraph council sessions…" });
 
   const results = await Promise.all(
@@ -817,7 +923,8 @@ function criticRouterNode(state: CouncilState, config: LangGraphRunnableConfig) 
     type: "status",
     text: `Moderator opens ballot round ${state.revisionCount + 1} with ${first}.`,
   });
-  return { nextCritic };
+  // Fresh ballot round: nobody has spoken yet.
+  return { nextCritic, balloted: [] as Array<"nimby" | "pr"> };
 }
 
 async function nimbyNode(state: CouncilState, config: LangGraphRunnableConfig) {
@@ -833,7 +940,7 @@ async function nimbyNode(state: CouncilState, config: LangGraphRunnableConfig) {
       `Affected areas: ${state.neighbourhoods.join(", ") || "Toronto"}.\n\n` +
       "Identify the 2–3 most disruptive stations on merit, then vote only against stops that truly require redesign.",
   );
-  return { fullNimby: full, nimbyVotes: ballot };
+  return { fullNimby: full, nimbyVotes: ballot, balloted: [...state.balloted, "nimby" as const] };
 }
 
 async function prNode(state: CouncilState, config: LangGraphRunnableConfig) {
@@ -847,7 +954,7 @@ async function prNode(state: CouncilState, config: LangGraphRunnableConfig) {
       (state.fullNimby ? `Margaret this round: ${clip(state.fullNimby, 350)}\n\n` : "Margaret has not spoken this ballot round yet.\n\n") +
       "Score top stations on Displacement/Noise/Gentrification/EnvJustice. Vote against the stops that are genuine political liabilities.",
   );
-  return { fullPr: full, prVotes: ballot };
+  return { fullPr: full, prVotes: ballot, balloted: [...state.balloted, "pr" as const] };
 }
 
 function tallyNode(state: CouncilState, config: LangGraphRunnableConfig) {
@@ -913,25 +1020,40 @@ async function commissionNode(state: CouncilState, config: LangGraphRunnableConf
   let finalRoute: RouteResult | null = null;
   const mustFinalize = ruling.decision === "approve" || state.revisionCount >= MAX_REVISIONS;
   if (mustFinalize) {
-    for await (const item of getProvider(state.providerName).streamMessageWithTool(
-      state.sessions[ag.key]!,
-      "Now call propose_route with the binding final subway route. Reuse the exact coordinates from the current route above.",
-      PROPOSE_ROUTE_TOOL,
-      ag.model,
-      ag.maxTokens,
-    )) {
-      if (item.type === "text") {
-        emit(config, { type: "agent_text", agent: ag.name, text: item.text });
-      } else {
-        finalRoute = sortRouteStops(item.input);
-      }
-    }
-    // Apply the same deterministic repair gate (#3) to the binding route.
-    if (finalRoute) {
-      const repaired = repairRoute(finalRoute, state.existingLines);
+    if (ruling.decision === "approve" && currentRoute) {
+      // Approval = adopt the debated route AS-IS, deterministically. Asking the
+      // model to re-emit the route via propose_route made it re-type every
+      // coordinate — one more place to hallucinate — for zero benefit when the
+      // ruling is "this route is fine".
+      const repaired = repairRoute(currentRoute, state.existingLines);
       finalRoute = repaired.route;
       if (repaired.fixes.length > 0) {
         emit(config, { type: "status", text: `Auto-repaired final route: ${repaired.fixes.join("; ")}.` });
+      }
+    } else {
+      // Reject at the revision cap: the commission must state its minimum
+      // changes as a route — the only finalize path that still goes through
+      // the model (it is actually changing something).
+      for await (const item of getProvider(state.providerName).streamMessageWithTool(
+        state.sessions[ag.key]!,
+        "You rejected the route but revisions are exhausted, so you must finalize. Call propose_route with the current route above MINUS your minimum required changes. Reuse the exact coordinates for every stop you keep.",
+        PROPOSE_ROUTE_TOOL,
+        ag.model,
+        ag.maxTokens,
+      )) {
+        if (item.type === "text") {
+          emit(config, { type: "agent_text", agent: ag.name, text: item.text });
+        } else {
+          finalRoute = sortRouteStops(item.input);
+        }
+      }
+      // Apply the same deterministic repair gate (#3) to the binding route.
+      if (finalRoute) {
+        const repaired = repairRoute(finalRoute, state.existingLines);
+        finalRoute = repaired.route;
+        if (repaired.fixes.length > 0) {
+          emit(config, { type: "status", text: `Auto-repaired final route: ${repaired.fixes.join("; ")}.` });
+        }
       }
     }
   }
@@ -986,12 +1108,15 @@ function afterCriticRouter(state: CouncilState): "nimby" | "pr" {
   return state.nextCritic ?? "nimby";
 }
 
+// Route on who has SPOKEN this round (balloted), never on ballot presence —
+// a null ballot (unparseable cast_votes) must not re-run the other critic, or
+// two null ballots ping-pong the graph into the recursion limit.
 function afterNimby(state: CouncilState): "pr" | "tally" {
-  return state.prVotes ? "tally" : "pr";
+  return state.balloted.includes("pr") ? "tally" : "pr";
 }
 
 function afterPr(state: CouncilState): "nimby" | "tally" {
-  return state.nimbyVotes ? "tally" : "nimby";
+  return state.balloted.includes("nimby") ? "tally" : "nimby";
 }
 
 function afterCommission(state: CouncilState): "revise" | typeof END {
