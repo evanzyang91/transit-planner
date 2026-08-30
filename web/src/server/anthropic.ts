@@ -89,6 +89,11 @@ export function createAnthropicProvider(): AIProvider {
       return assistantId;
     },
 
+    hasSession(assistantId, threadId) {
+      const thread = threadStore.get(threadId);
+      return Boolean(thread) && assistantStore.has(assistantId);
+    },
+
     async createThread(assistantId) {
       getAssistant(assistantId);
       const threadId = crypto.randomUUID();

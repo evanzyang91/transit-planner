@@ -77,9 +77,26 @@ export async function POST(request: NextRequest) {
     const systemPrompt = mapCtx?.systemPrompt ?? body.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
 
     let assistantId = providedAssistantId;
-    assistantId ??= await aiProvider.createAssistant("Transit Planner", systemPrompt);
-
     let threadId = providedThreadId;
+
+    // The client persists these ids in localStorage, but the provider keeps the
+    // matching session in process memory — so after a hot reload, a restart, or
+    // a hop to another serverless instance, it sends ids the server has never
+    // seen. That used to surface as "Unknown thread: <uuid>". Drop the dead
+    // pair and open a fresh session; the metadata event below hands the new ids
+    // back and the client adopts them. History is lost, the request isn't.
+    if (
+      assistantId &&
+      threadId &&
+      aiProvider.hasSession &&
+      !aiProvider.hasSession(assistantId, threadId)
+    ) {
+      console.warn(`[ai/chat] stale session ${threadId} — starting a new thread`);
+      assistantId = undefined;
+      threadId = undefined;
+    }
+
+    assistantId ??= await aiProvider.createAssistant("Transit Planner", systemPrompt);
     threadId ??= await aiProvider.createThread(assistantId);
 
     const encoder = new TextEncoder();
