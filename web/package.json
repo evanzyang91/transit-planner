@@ -6,7 +6,9 @@
   "scripts": {
     "prebuild": "node scripts/setup.cjs",
     "build": "next build",
-    "check": "next lint && tsc --noEmit",
+    "check": "node scripts/validate-routes.mjs && vitest run && next lint && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev": "next dev --turbo",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
     "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
@@ -14,14 +16,18 @@
     "lint:fix": "next lint --fix",
     "preview": "next build && next start",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "validate:routes": "node scripts/validate-routes.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
     "@auth0/nextjs-auth0": "^4.16.0",
     "@google/generative-ai": "^0.24.1",
     "@langchain/langgraph": "^1.3.0",
+    "@langfuse/otel": "^5.11.0",
+    "@langfuse/tracing": "^5.11.0",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
+    "@opentelemetry/sdk-node": "^0.221.0",
     "@react-three/fiber": "^9.5.0",
     "@supabase/supabase-js": "^2.98.0",
     "@t3-oss/env-nextjs": "^0.12.0",
@@ -29,6 +35,7 @@
     "@types/mapbox__mapbox-gl-draw": "^1.4.9",
     "@types/mapbox-gl": "^3.4.1",
     "@vercel/analytics": "^2.0.1",
+    "@vercel/otel": "^2.1.3",
     "@vercel/speed-insights": "^2.0.0",
     "gtfs-realtime-bindings": "^1.1.1",
     "jszip": "^3.10.1",
@@ -64,7 +71,8 @@
     "prettier": "^3.5.3",
     "prettier-plugin-tailwindcss": "^0.6.11",
     "typescript": "^5.8.2",
-    "typescript-eslint": "^8.27.0"
+    "typescript-eslint": "^8.27.0",
+    "vitest": "^4.1.11"
   },
   "ct3aMetadata": {
     "initVersion": "7.40.0"
