@@ -20,7 +20,7 @@ function GreatCircleOrbit({ color, normal, speed, phases, r = 6.01 }: {
   const R = r;
 
   // Two orthonormal basis vectors spanning the orbit plane
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   const { u, v } = useMemo(() => {
     const n = new THREE.Vector3(...normal).normalize();
     const arb = Math.abs(n.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
@@ -44,8 +44,8 @@ function GreatCircleOrbit({ color, normal, speed, phases, r = 6.01 }: {
     -Math.sin(a) * u.z + Math.cos(a) * v.z,
   ).normalize();
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+
   const circleObject = useMemo(() => {
     const pts: THREE.Vector3[] = [];
     for (let i = 0; i <= 128; i++) {
@@ -79,7 +79,7 @@ function GreatCircleOrbit({ color, normal, speed, phases, r = 6.01 }: {
   // In local group space (X=tangent, Y=outward, Z=binormal):
   //   arc point at angle δ → (R·sin δ, R·(cos δ − 1), 0)
   //   rotated by −δ around Z so the segment body is tangent to the sphere.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   const segData = useMemo(() => {
     const HALF_ARC = 0.24; // radians each side (arc length ≈ 2.9 world units)
     const N = 8;

@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { type NextRequest } from "next/server";
 import { getProvider, DEFAULT_SYSTEM_PROMPT } from "~/server/ai-provider";
 import { trackChatMessage } from "~/server/discord";
 import { buildNetwork } from "~/server/map-data/network";

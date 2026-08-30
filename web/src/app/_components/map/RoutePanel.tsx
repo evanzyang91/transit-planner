@@ -26,9 +26,9 @@ function connectedRoutesFor(
 
 function parseHeadway(frequency: string, servicePattern?: Route["servicePattern"]): number {
   if (servicePattern?.headwayMinutes) return servicePattern.headwayMinutes;
-  const range = frequency.match(/(\d+)[–\-](\d+)/);
+  const range = /(\d+)[–\-](\d+)/.exec(frequency);
   if (range) return (parseInt(range[1]!) + parseInt(range[2]!)) / 2;
-  const single = frequency.match(/(\d+)\s*min/i);
+  const single = /(\d+)\s*min/i.exec(frequency);
   if (single) return parseInt(single[1]!);
   return 30;
 }

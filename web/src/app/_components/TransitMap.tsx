@@ -1749,7 +1749,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     newRoutes: Route[],
     newHiddenRoutes: Set<string>,
     planId: string,
-    newTransferExclusions: Set<string> = new Set(),
+    newTransferExclusions = new Set<string>(),
   ) {
     snapshotHistory();
     // Plans saved before stop ids existed have none — backfill on the way in so
@@ -3474,7 +3474,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     return cleanup;
   }, [measurePoints, mapLoaded]);
 
-  
+
 
   // ── generated route layer (re-renders when route or stops change)
   useEffect(() => {
@@ -4594,7 +4594,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
           {/*
           <div className="mx-1 h-6 w-px bg-stone-200" />
 
-          
+
            <div className="group relative">
             <button
               onClick={() => handleSetDrawMode("boundary")}

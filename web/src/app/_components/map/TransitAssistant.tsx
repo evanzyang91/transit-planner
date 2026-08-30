@@ -30,8 +30,7 @@ const MD = {
 // expose it as `webkitSpeechRecognition`, the spec'd name is `SpeechRecognition`,
 // and Firefox doesn't ship it at all. We feature-detect both and hide the
 // button entirely when unsupported instead of showing a broken control.
-interface SpeechRecognitionConstructor {
-  new (): {
+type SpeechRecognitionConstructor = new () => {
     lang: string;
     continuous: boolean;
     interimResults: boolean;
@@ -41,7 +40,6 @@ interface SpeechRecognitionConstructor {
     start: () => void;
     stop: () => void;
   };
-}
 
 function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | null {
   if (typeof window === "undefined") return null;
