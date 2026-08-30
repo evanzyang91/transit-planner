@@ -258,9 +258,12 @@ export function moveVertex(
   const { kind, args } = ann;
   if (kind === "pin") return { ...args, lng, lat };
   if (kind === "corridor") {
+    // Dragging an endpoint invalidates the server's road-snapped path, so we
+    // drop it and fall back to the straight from→to line (honest, not stale).
+    const { path: _dropped, ...rest } = args;
     return index === 0
-      ? { ...args, from: [lng, lat] }
-      : { ...args, to: [lng, lat] };
+      ? { ...rest, from: [lng, lat] }
+      : { ...rest, to: [lng, lat] };
   }
   if (kind === "highlight" && Array.isArray(args.polygon)) {
     const ring = (args.polygon as number[][]).map((p) => [Number(p[0]), Number(p[1])]);

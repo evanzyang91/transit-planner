@@ -159,7 +159,15 @@ export function LayersDropdown({ overlays, pinned, onTogglePin, actions = [] }: 
         )}
 
         {open && (
-          <div className="pointer-events-auto absolute top-full right-0 mt-2 w-72 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg">
+          // Anchored LEFT, not right: the top toolbar is centre-justified, so
+          // this button sits left-of-centre. Growing the 18rem panel leftward
+          // (right-0) ran it off the left edge of the viewport. Growing it
+          // rightward keeps it over open map, and lines it up with the pinned
+          // chip stack above, which is also left-0.
+          // 📖 Learn: Tailwind `left-0`/`right-0` on an absolute child pin that
+          // EDGE of the child to the same edge of the `relative` parent; the
+          // box then extends away from it. They are anchors, not alignment.
+          <div className="pointer-events-auto absolute top-full left-0 mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg">
             <div className="border-b border-stone-100 px-3.5 py-2">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">Map overlays</p>
             </div>

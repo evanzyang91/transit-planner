@@ -43,6 +43,11 @@ export function useAnthropic(
     // localStorage under this key, so it survives the panel unmounting (hide/open)
     // and page reloads. Omit it and the hook stays purely in-memory as before.
     persistKey?: string;
+    // Supplier for the client's LIVE route state, sent with every map-tools
+    // message so the server tools query the network the user actually sees
+    // (user-drawn lines included) — not the static default snapshot.
+    // A function (not a value) so each send reads the freshest routes.
+    networkRoutes?: () => unknown;
   },
 ) {
   const persistKey = options?.persistKey;
@@ -133,11 +138,14 @@ export function useAnthropic(
             message,
             assistantId: state.assistantId,
             threadId: state.threadId,
-            systemPrompt: customSystemPrompt,
+            // On the map-tools surface the SERVER builds the prompt; a client
+            // prompt would be ignored there anyway, so don't send one.
+            systemPrompt: mapTools ? undefined : customSystemPrompt,
             model: sendOptions?.model,
             maxTokens: sendOptions?.maxTokens,
             provider,
             mapTools,
+            networkRoutes: mapTools ? options?.networkRoutes?.() : undefined,
           }),
         });
 
@@ -248,95 +256,12 @@ export function useAnthropic(
         throw error;
       }
     },
-    [state.assistantId, state.threadId, customSystemPrompt, options?.mapTools, options?.onToolCall],
+    [state.assistantId, state.threadId, customSystemPrompt, options?.mapTools, options?.onToolCall, options?.networkRoutes],
   );
 
-  const sendMessage = useCallback(
-    async (
-      message: string,
-      sendOptions?: {
-        model?: string;
-        maxTokens?: number;
-      },
-    ) => {
-      setState((prev) => ({
-        ...prev,
-        isLoading: true,
-        error: null,
-        messages: [...prev.messages, { role: "user", content: message }],
-      }));
-
-      try {
-        trackEvent("AI Message Sent", {
-          message_length: message.length,
-          has_custom_system_prompt: Boolean(customSystemPrompt),
-          max_tokens: sendOptions?.maxTokens,
-          model: sendOptions?.model,
-          streaming: false,
-          provider: "anthropic",
-        });
-
-        const response = await fetch("/api/ai/message", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message,
-            assistantId: state.assistantId,
-            threadId: state.threadId,
-            systemPrompt: customSystemPrompt,
-            model: sendOptions?.model,
-            maxTokens: sendOptions?.maxTokens,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = (await response.json()) as {
-          response: string;
-          assistantId: string;
-          threadId: string;
-        };
-
-        setState((prev) => ({
-          ...prev,
-          assistantId: data.assistantId,
-          threadId: data.threadId,
-          messages: [
-            ...prev.messages,
-            { role: "assistant", content: data.response },
-          ],
-          isLoading: false,
-        }));
-
-        trackEvent("AI Response Received", {
-          message_length: message.length,
-          response_length: data.response.length,
-          streaming: false,
-          provider: "anthropic",
-        });
-
-        return data.response;
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error";
-        trackEvent("AI Response Failed", {
-          message_length: message.length,
-          error: errorMessage,
-          streaming: false,
-          provider: "anthropic",
-        });
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          error: errorMessage,
-        }));
-        throw error;
-      }
-    },
-    [state.assistantId, state.threadId, customSystemPrompt],
-  );
+  // (The old non-streaming sendMessage was removed with its only consumer,
+  // the anthropic-test demo. TransitMap's route-stats feature calls
+  // /api/ai/message directly and doesn't go through this hook.)
 
   const reset = useCallback(() => {
     setState({
@@ -353,7 +278,6 @@ export function useAnthropic(
 
   return {
     ...state,
-    sendMessage,
     sendMessageStreaming,
     reset,
   };

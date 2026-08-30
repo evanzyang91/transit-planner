@@ -2983,14 +2983,20 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
       .map((a) => {
         const from = a.args.from as number[];
         const to = a.args.to as number[];
+        // Prefer the server's road-snapped path; fall back to a straight line.
+        const path = Array.isArray(a.args.path)
+          ? (a.args.path as number[][]).map((p) => [Number(p[0]), Number(p[1])] as [number, number])
+          : null;
         return {
           type: "Feature" as const,
           geometry: {
             type: "LineString" as const,
-            coordinates: [
-              [Number(from[0]), Number(from[1])],
-              [Number(to[0]), Number(to[1])],
-            ] as [number, number][],
+            coordinates: path && path.length >= 2
+              ? path
+              : ([
+                  [Number(from[0]), Number(from[1])],
+                  [Number(to[0]), Number(to[1])],
+                ] as [number, number][]),
           },
           properties: {
             label: a.label,
