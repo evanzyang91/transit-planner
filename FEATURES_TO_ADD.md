@@ -134,3 +134,19 @@ depends on which provider the request routes to, so this needs deciding per-surf
 📖 Learn: adaptive thinking vs. budget_tokens — the older API made you pre-commit a fixed
 reasoning budget; 4.6+ lets the model decide per request, with output_config.effort as a coarse
 dial. Which era a model belongs to determines which config form you're stuck with.
+
+
+## Privacy — two open decisions (added 2026-08-31)
+
+Both are deliberately NOT in the privacy policy because neither is live. If
+either ships, update `web/src/app/privacy/page.tsx` in the same commit.
+
+- `trackUserSignIn` in `web/src/server/discord.ts` sends name + email to Discord.
+  Exported, zero callers. Delete it, or wire it up AND disclose it — Section 2
+  currently says profile data goes to the auth provider, not to Discord.
+- The 200-char chat preview (`trackChatMessage`, called from
+  `api/ai/chat/route.ts`) IS disclosed, but it lands in a channel a person reads
+  rather than a metrics dashboard. Decide if it should exist.
+
+Note: the `skip_tracking` localStorage opt-out covers Mixpanel and visit
+reporting only. Both flows above are server-side and ignore it.
