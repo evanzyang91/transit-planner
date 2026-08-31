@@ -79,6 +79,11 @@ export async function POST(request: NextRequest) {
     let assistantId = providedAssistantId;
     let threadId = providedThreadId;
 
+    // Set when we drop a dead session below. The client needs to know, because
+    // otherwise the assistant simply appears to forget the conversation with no
+    // explanation — the server recovers, but the user is left confused.
+    let contextReset = false;
+
     // The client persists these ids in localStorage, but the provider keeps the
     // matching session in process memory — so after a hot reload, a restart, or
     // a hop to another serverless instance, it sends ids the server has never
@@ -94,6 +99,7 @@ export async function POST(request: NextRequest) {
       console.warn(`[ai/chat] stale session ${threadId} — starting a new thread`);
       assistantId = undefined;
       threadId = undefined;
+      contextReset = true;
     }
 
     assistantId ??= await aiProvider.createAssistant("Transit Planner", systemPrompt);
@@ -105,7 +111,7 @@ export async function POST(request: NextRequest) {
         try {
           controller.enqueue(
             encoder.encode(
-              `data: ${JSON.stringify({ type: "metadata", assistantId, threadId })}\n\n`,
+              `data: ${JSON.stringify({ type: "metadata", assistantId, threadId, contextReset })}\n\n`,
             ),
           );
 

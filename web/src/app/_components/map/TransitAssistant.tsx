@@ -319,6 +319,19 @@ export function TransitAssistant({ routes, seed, onSeedConsumed }: Props) {
                 : [];
             return (
               <div key={i}>
+                {/* The server lost this conversation's session and opened a new
+                    thread, so the reply below was written without any of the
+                    history above it. Saying so beats letting the assistant look
+                    like it randomly forgot. */}
+                {m.contextReset && (
+                  <div className="mb-1.5 mr-6 flex items-center gap-1.5">
+                    <div className="h-px flex-1 bg-amber-200" />
+                    <p className="text-[9px] text-amber-600 whitespace-nowrap">
+                      New conversation — earlier context was lost
+                    </p>
+                    <div className="h-px flex-1 bg-amber-200" />
+                  </div>
+                )}
                 <div
                   className={`rounded-lg px-2.5 py-2 text-xs leading-relaxed ${
                     m.role === "user"
