@@ -1,5 +1,8 @@
 import "server-only";
 
+import { startObservation } from "@langfuse/tracing";
+import { tracingEnabled } from "./tracing";
+
 import Anthropic from "@anthropic-ai/sdk";
 import type {
   AIProvider,
@@ -84,6 +87,11 @@ export function createAnthropicProvider(): AIProvider {
       const assistantId = crypto.randomUUID();
       assistantStore.set(assistantId, { name, systemPrompt });
       return assistantId;
+    },
+
+    hasSession(assistantId, threadId) {
+      const thread = threadStore.get(threadId);
+      return Boolean(thread) && assistantStore.has(assistantId);
     },
 
     async createThread(assistantId) {
@@ -211,57 +219,104 @@ export function createAnthropicProvider(): AIProvider {
 
       let messages: StoredMessage[] = [...thread.messages, { role: "user", content }];
 
-      for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
-        const stream = client.messages.stream({
-          model,
-          max_tokens: maxTokens,
-          system: assistant.systemPrompt,
-          messages,
-          tools: anthropicTools,
-          tool_choice: { type: "auto" },
-        });
+      // Langfuse trace root. Typed "agent" (not a generic span) because this is
+      // an autonomous tool-using loop — that type is what drives Langfuse's
+      // Agent Graph view. Children are created off this handle rather than via
+      // active context: an async generator yields across await boundaries, so
+      // OTel's ambient context can't be relied on to still be current.
+      const turn = tracingEnabled
+        ? startObservation("map-assistant-turn", { input: content }, { asType: "agent" })
+        : null;
 
-        for await (const event of stream) {
-          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-            yield event.delta.text;
+      let answer = "";
+      try {
+        for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
+          const generation = turn?.startObservation(
+            `llm-call-${loop + 1}`,
+            {
+              model,
+              input: messages,
+              modelParameters: { max_tokens: maxTokens },
+            },
+            { asType: "generation" },
+          );
+
+          const stream = client.messages.stream({
+            model,
+            max_tokens: maxTokens,
+            system: assistant.systemPrompt,
+            messages,
+            tools: anthropicTools,
+            tool_choice: { type: "auto" },
+          });
+
+          for await (const event of stream) {
+            if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+              answer += event.delta.text;
+              yield event.delta.text;
+            }
           }
-        }
 
-        const final = await stream.finalMessage();
-        const toolUses = final.content.filter(
-          (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
-        );
+          const final = await stream.finalMessage();
 
-        // No tool call this turn → the model is done researching. Persist the
-        // full history (including any prior tool_use/tool_result pairs) so the
-        // follow-up propose_route turn still "remembers" the retrieved data.
-        if (toolUses.length === 0) {
-          messages = [...messages, { role: "assistant", content: final.content }];
-          threadStore.set(threadId, { ...thread, messages });
-          return;
-        }
+          // usageDetails is what lets Langfuse compute cost automatically.
+          generation?.update({
+            output: final.content,
+            usageDetails: {
+              input: final.usage.input_tokens,
+              output: final.usage.output_tokens,
+            },
+          }).end();
 
-        const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
-        for (const tu of toolUses) {
-          let resultJson: string;
-          try {
-            const result = await runTool(tu.name, tu.input as Record<string, unknown>);
-            resultJson = JSON.stringify(result);
-          } catch (e) {
-            resultJson = JSON.stringify({ error: String(e) });
+          const toolUses = final.content.filter(
+            (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
+          );
+
+          // No tool call this turn → the model is done researching. Persist the
+          // full history (including any prior tool_use/tool_result pairs) so the
+          // follow-up propose_route turn still "remembers" the retrieved data.
+          if (toolUses.length === 0) {
+            messages = [...messages, { role: "assistant", content: final.content }];
+            threadStore.set(threadId, { ...thread, messages });
+            return;
           }
-          toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: resultJson });
+
+          const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
+          for (const tu of toolUses) {
+            // One "tool" observation per call — this is the "thought process":
+            // exactly which tool ran, with what arguments, and what came back.
+            const toolSpan = turn?.startObservation(
+              tu.name,
+              { input: tu.input },
+              { asType: "tool" },
+            );
+            let resultJson: string;
+            try {
+              const result = await runTool(tu.name, tu.input as Record<string, unknown>);
+              resultJson = JSON.stringify(result);
+              toolSpan?.update({ output: result }).end();
+            } catch (e) {
+              resultJson = JSON.stringify({ error: String(e) });
+              toolSpan?.update({ output: { error: String(e) }, level: "ERROR" }).end();
+            }
+            toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: resultJson });
+          }
+
+          messages = [
+            ...messages,
+            { role: "assistant", content: final.content },
+            { role: "user", content: toolResults },
+          ];
         }
 
-        messages = [
-          ...messages,
-          { role: "assistant", content: final.content },
-          { role: "user", content: toolResults },
-        ];
+        // Hit the loop cap — persist what we have so context isn't lost.
+        threadStore.set(threadId, { ...thread, messages });
+      } finally {
+        // finally, not a tail call: a generator abandoned by its consumer (the
+        // client disconnects mid-stream) resumes here via .return(), and an
+        // unended span is never exported at all.
+        turn?.update({ output: answer }).end();
       }
-
-      // Hit the loop cap — persist what we have so context isn't lost.
-      threadStore.set(threadId, { ...thread, messages });
     },
 
     async sendMessage(threadId, content, model = "claude-haiku-4-5-20251001", maxTokens = 600) {
@@ -290,6 +345,7 @@ export function createAnthropicProvider(): AIProvider {
     async *streamMessageWithMapTools(
       threadId,
       content,
+      ctx,
       model = "claude-haiku-4-5-20251001",
       maxTokens = 900,
     ): AsyncGenerator<MapToolStreamChunk> {
@@ -301,11 +357,14 @@ export function createAnthropicProvider(): AIProvider {
       }));
 
       const gen = streamMapToolResponse(client, {
-        system: assistant.systemPrompt,
+        // The map prompt embeds live-network stats, so a fresh per-request
+        // prompt (ctx.systemPrompt) beats the one stored at assistant creation.
+        system: ctx.systemPrompt ?? assistant.systemPrompt,
         history,
         userMessage: content,
         model,
         maxTokens,
+        ctx,
       });
 
       let result = await gen.next();

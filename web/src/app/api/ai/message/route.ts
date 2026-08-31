@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { getProvider, DEFAULT_SYSTEM_PROMPT } from "~/server/ai-provider";
 
 export const dynamic = "force-dynamic";

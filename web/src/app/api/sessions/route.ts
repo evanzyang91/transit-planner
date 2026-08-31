@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth0 } from "~/lib/auth0";
 import { supabase } from "~/server/supabase";
-import type { CreatePlanBody, PlanSession, PlanSessionSummary } from "~/lib/plans";
+import { isMissingColumnError, rowToPlanSession, type CreatePlanBody, type PlanSessionSummary } from "~/lib/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { name, routes, hiddenRoutes } = body;
+  const { name, routes, hiddenRoutes, transferExclusions } = body;
   if (!name || typeof name !== "string" || name.trim().length === 0) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
@@ -55,29 +55,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Routes must be an array" }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  const base = {
+    user_id: userId,
+    name: name.trim(),
+    routes,
+    hidden_routes: Array.isArray(hiddenRoutes) ? hiddenRoutes : [],
+  };
+
+  const exclusions = Array.isArray(transferExclusions) ? transferExclusions : [];
+
+  // The select list deliberately omits transfer_exclusions: we already know the
+  // value (it came from the request), so reading it back would make this query
+  // fail on a database where the column doesn't exist yet. Only the *insert*
+  // needs the fallback below.
+  let { data, error } = await supabase
     .from("plan_sessions")
-    .insert({
-      user_id: userId,
-      name: name.trim(),
-      routes,
-      hidden_routes: Array.isArray(hiddenRoutes) ? hiddenRoutes : [],
-    })
+    .insert({ ...base, transfer_exclusions: exclusions })
     .select("id, name, routes, hidden_routes, created_at, updated_at")
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  // Older database without the column — save the plan anyway, minus dismissals.
+  let savedExclusions = exclusions;
+  if (isMissingColumnError(error)) {
+    savedExclusions = [];
+    ({ data, error } = await supabase
+      .from("plan_sessions")
+      .insert(base)
+      .select("id, name, routes, hidden_routes, created_at, updated_at")
+      .single());
   }
 
-  const plan: PlanSession = {
-    id: data.id as string,
-    name: data.name as string,
-    routes: data.routes as PlanSession["routes"],
-    hiddenRoutes: (data.hidden_routes as string[]) ?? [],
-    createdAt: data.created_at as string,
-    updatedAt: data.updated_at as string,
-  };
+  if (error || !data) {
+    return NextResponse.json({ error: error?.message ?? "Insert failed" }, { status: 500 });
+  }
 
-  return NextResponse.json(plan, { status: 201 });
+  return NextResponse.json(rowToPlanSession(data, savedExclusions), { status: 201 });
 }

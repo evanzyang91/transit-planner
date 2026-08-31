@@ -14,6 +14,7 @@ import {
   type Route,
 } from "~/app/map/transit-data";
 import { routeToGeoJSON, stopsToGeoJSON, geomBBox, portalsToGeoJSON, undergroundToGeoJSON, snapToShape, sliceShapeBetween, pointInGeometry } from "./map/geo";
+import { newStopId, withStopIds, transferCounterparts, transferExclusionKey } from "~/app/map/stop-identity";
 import { NeighbourhoodPanel } from "./map/NeighbourhoodPanel";
 import { RoutePanel } from "./map/RoutePanel";
 import { GeneratedRoutePanel } from "./map/GeneratedRoutePanel";
@@ -53,6 +54,13 @@ import { useIsochrone } from "./map/hooks/useIsochrone";
 import { identifyAnalyticsUser, registerAnalyticsSuperProps, trackEvent } from "~/lib/analytics";
 
 type DrawMode = "normal" | "select" | "boundary";
+
+/** One undo/redo entry. Everything the user can change and expect to get back. */
+type HistoryState = {
+  routes: Route[];
+  counter: number;
+  transferExclusions: Set<string>;
+};
 type RouteMetrics = {
   total_lines: number;
   total_stations: number;
@@ -286,6 +294,8 @@ export function TransitMap() {
   const updateAiAnnotationArgsRef = useRef(updateAiAnnotationArgs);
   useEffect(() => { updateAiAnnotationArgsRef.current = updateAiAnnotationArgs; }, [updateAiAnnotationArgs]);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  // Holds a stop *id*, not a name — two stops on one line can share a name, and
+  // this drives both the RoutePanel highlight and its delete button.
   const [selectedStop, setSelectedStop] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -310,6 +320,10 @@ export function TransitMap() {
     ...ROUTES.filter((r) => r.type === "streetcar"),
     ...ROUTES.filter((r) => r.type !== "bus" && r.type !== "streetcar"),
   ]);
+  // ROUTES already carries stop ids (stamped in transit-data), so no backfill
+  // is needed here — but every *other* way routes enter this state does need
+  // one. See withStopIds() calls in handleLoadPlan, applyRoutes, the share-hash
+  // decoder, onActivateRoute and the council adopt handler.
   // Derive selectedRoute from routes so any mutation (rename, delete stop, etc.) is reflected automatically
   const selectedRoute = routes.find((r) => r.id === selectedRouteId) ?? null;
   const [importError, setImportError] = useState<string | null>(null);
@@ -367,9 +381,16 @@ export function TransitMap() {
   const [selectedNeighbourhoods, setSelectedNeighbourhoods] = useState<Set<string>>(new Set());
   const [selectedStations, setSelectedStations] = useState<Set<string>>(new Set()); // "name::routeId"
   const [focusedNeighbourhood, setFocusedNeighbourhood] = useState<{ id: string; name: string; lat: number; lng: number; geometry: GeoJSON.Geometry | null } | null>(null);
-  const [stationPopup, setStationPopup] = useState<{ name: string; routeId: string; x: number; y: number; coords: [number, number] } | null>(null);
-  // Pairs the user has explicitly dismissed as transfers: "routeA:routeB:stopName" (routeIds sorted)
+  // stopId is the stop this popup acts on. `name` is kept for display only —
+  // deleting/renaming reads stopId, so two same-named stops stay distinct.
+  const [stationPopup, setStationPopup] = useState<{ stopId: string; name: string; routeId: string; x: number; y: number; coords: [number, number] } | null>(null);
+  // Pairs the user has explicitly dismissed as transfers: "routeA:routeB:stopName"
+  // (routeIds sorted — build the key with transferExclusionKey()).
   const [transferExclusions, setTransferExclusions] = useState<Set<string>>(new Set());
+  // Mirror in a ref so undo snapshots taken inside event handlers read the
+  // current value rather than a stale render closure.
+  const transferExclusionsRef = useRef<Set<string>>(new Set());
+  useEffect(() => { transferExclusionsRef.current = transferExclusions; }, [transferExclusions]);
   const [showNewLineModal, setShowNewLineModal] = useState(false);
   const [showCoverageZones, setShowCoverageZones] = useState(false);
   const [showServiceHeatmap, setShowServiceHeatmap] = useState(false);
@@ -427,8 +448,8 @@ export function TransitMap() {
   const startShimmerRef = useRef<(routeId: string) => void>(() => {});
   const stopCounterRef = useRef(1);
   const customLineCounterRef = useRef(1);
-  const historyRef = useRef<{ routes: Route[]; counter: number }[]>([]);
-  const redoStackRef = useRef<{ routes: Route[]; counter: number }[]>([]);
+  const historyRef = useRef<HistoryState[]>([]);
+  const redoStackRef = useRef<HistoryState[]>([]);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
@@ -771,9 +792,19 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     if (!hash.startsWith("#plan=")) return;
     void decompressFromBase64(hash.slice(6)).then((json) => {
       try {
-        const state = JSON.parse(json) as { routes?: Route[]; hiddenRoutes?: string[]; center?: [number, number]; zoom?: number };
-        if (Array.isArray(state.routes)) { setRoutes(state.routes); routesRef.current = state.routes; }
+        const state = JSON.parse(json) as { routes?: Route[]; hiddenRoutes?: string[]; transferExclusions?: string[]; center?: [number, number]; zoom?: number };
+        if (Array.isArray(state.routes)) {
+          const shared = withStopIds(state.routes);
+          setRoutes(shared);
+          routesRef.current = shared;
+        }
         if (Array.isArray(state.hiddenRoutes)) setHiddenRoutes(new Set(state.hiddenRoutes));
+        // Older share links predate this field — absent means "no dismissals".
+        if (Array.isArray(state.transferExclusions)) {
+          const excl = new Set(state.transferExclusions);
+          setTransferExclusions(excl);
+          transferExclusionsRef.current = excl;
+        }
         if (state.center && state.zoom) pendingViewRef.current = { center: state.center, zoom: state.zoom };
       } catch { /* malformed hash — ignore */ }
     });
@@ -1313,7 +1344,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
       description,
       frequency: "Every 5 min",
       servicePattern: { headwayMinutes: 5, startHour: 6, endHour: 23, days: ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"] },
-      stops,
+      // Generated stops are built from selections/neighbourhoods and carry no
+      // id — mint one so the generated-route dots are clickable like any other.
+      stops: stops.map((s) => ({ ...s, id: newStopId() })),
       stats,
     });
     trackEvent("Generated Route Completed", {
@@ -1368,17 +1401,22 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     } catch { return null; }
   }
 
-  function captureCurrentState() {
+  function captureCurrentState(): HistoryState {
     return {
       routes: [...routesRef.current],
       counter: stopCounterRef.current,
+      // Copy the Set — undo must restore the dismissals as they were, and a
+      // shared reference would be mutated by later edits.
+      transferExclusions: new Set(transferExclusionsRef.current),
     };
   }
 
-  function applyHistoryState(state: { routes: Route[]; counter: number }) {
+  function applyHistoryState(state: HistoryState) {
     stopCounterRef.current = state.counter;
     routesRef.current = state.routes;
     setRoutes(state.routes);
+    transferExclusionsRef.current = state.transferExclusions;
+    setTransferExclusions(state.transferExclusions);
   }
 
   function handleUndo() {
@@ -1400,10 +1438,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
   }
 
   function snapshotHistory() {
-    historyRef.current.push({
-      routes: [...routesRef.current],
-      counter: stopCounterRef.current,
-    });
+    // Reuse captureCurrentState so a field can never be added to one and
+    // forgotten in the other (that's how transferExclusions got left out).
+    historyRef.current.push(captureCurrentState());
     redoStackRef.current = [];
     setCanUndo(true);
     setCanRedo(false);
@@ -1708,13 +1745,26 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
   }
   triggerAutoSnapRef.current = triggerAutoSnap;
 
-  function handleLoadPlan(newRoutes: Route[], newHiddenRoutes: Set<string>, planId: string) {
+  function handleLoadPlan(
+    newRoutes: Route[],
+    newHiddenRoutes: Set<string>,
+    planId: string,
+    newTransferExclusions = new Set<string>(),
+  ) {
     snapshotHistory();
-    setRoutes(newRoutes);
-    routesRef.current = newRoutes;
+    // Plans saved before stop ids existed have none — backfill on the way in so
+    // delete/drag/rename can address stops properly in an old plan too.
+    const withIds = withStopIds(newRoutes);
+    setRoutes(withIds);
+    routesRef.current = withIds;
     setHiddenRoutes(newHiddenRoutes);
+    setTransferExclusions(newTransferExclusions);
+    transferExclusionsRef.current = newTransferExclusions;
     setCurrentPlanId(planId);
-    lastSavedRoutesRef.current = newRoutes;
+    // Must be the same array instance we just put in state — planIsDirty is a
+    // reference comparison, so handing it `newRoutes` would mark a freshly
+    // loaded plan dirty the moment backfill produced a new array.
+    lastSavedRoutesRef.current = withIds;
     setShowPlansPanel(false);
   }
 
@@ -1731,7 +1781,13 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
   function copyShareLink() {
     const center = mapRef.current?.getCenter().toArray() as [number, number] | undefined;
     const zoom = mapRef.current?.getZoom();
-    const state = { routes: routesRef.current, hiddenRoutes: [...hiddenRoutes], center, zoom };
+    const state = {
+      routes: routesRef.current,
+      hiddenRoutes: [...hiddenRoutes],
+      transferExclusions: [...transferExclusions],
+      center,
+      zoom,
+    };
     void compressToBase64(JSON.stringify(state)).then((compressed) => {
       const url = `${window.location.origin}${window.location.pathname}#plan=${compressed}`;
       void navigator.clipboard.writeText(url).then(() => {
@@ -1921,15 +1977,16 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     setSelectedStop(null);
   }
 
-  function handleDeleteStop(stopName: string, routeId: string) {
+  /** Delete exactly one stop, identified by id — never "the first one that shares this name". */
+  function handleDeleteStop(stopId: string, routeId: string) {
     const route = routesRef.current.find((r) => r.id === routeId);
+    const stopName = route?.stops.find((s) => s.id === stopId)?.name;
     snapshotHistory();
     setRoutes((prev) =>
       prev.map((r) => {
         if (r.id !== routeId) return r;
-        const idx = r.stops.findIndex((s) => s.name === stopName);
-        if (idx === -1) return r;
-        const stops = [...r.stops.slice(0, idx), ...r.stops.slice(idx + 1)];
+        const stops = r.stops.filter((s) => s.id !== stopId);
+        if (stops.length === r.stops.length) return r;
         return { ...r, shape: undefined, stops };
       })
     );
@@ -1942,21 +1999,38 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     });
   }
 
-  function handleDeleteStopFromAllRoutes(stopName: string) {
+  /**
+   * Delete a station from every line that serves it.
+   *
+   * Takes explicit (routeId, stopId) targets rather than a name: the caller
+   * already knows which stops are genuine transfer counterparts (co-located,
+   * via transferCounterparts) and passes exactly those. The old name-matching
+   * version removed one stop per route from *any* route with a matching name,
+   * which is how deleting one station wiped stops off unrelated lines.
+   */
+  function handleDeleteStopsFromRoutes(targets: { routeId: string; stopId: string }[]) {
+    if (targets.length === 0) return;
+    const byRoute = new Map<string, Set<string>>();
+    for (const t of targets) {
+      if (!byRoute.has(t.routeId)) byRoute.set(t.routeId, new Set());
+      byRoute.get(t.routeId)!.add(t.stopId);
+    }
     snapshotHistory();
     setRoutes((prev) =>
       prev.map((r) => {
-        const idx = r.stops.findIndex((s) => s.name === stopName);
-        if (idx === -1) return r;
-        const stops = [...r.stops.slice(0, idx), ...r.stops.slice(idx + 1)];
+        const ids = byRoute.get(r.id);
+        if (!ids) return r;
+        const stops = r.stops.filter((s) => !s.id || !ids.has(s.id));
+        if (stops.length === r.stops.length) return r;
         return { ...r, shape: undefined, stops };
       })
     );
     setGeneratedRoute((r) => {
       if (!r) return r;
-      const idx = r.stops.findIndex((s) => s.name === stopName);
-      if (idx === -1) return r;
-      const stops = [...r.stops.slice(0, idx), ...r.stops.slice(idx + 1)];
+      const ids = byRoute.get(r.id);
+      if (!ids) return r;
+      const stops = r.stops.filter((s) => !s.id || !ids.has(s.id));
+      if (stops.length === r.stops.length) return r;
       return { ...r, stops };
     });
   }
@@ -2394,7 +2468,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
       const busStopsFeatures: GeoJSON.Feature<GeoJSON.Point>[] = BUS_ROUTES.flatMap((r) =>
         r.stops.map((s) => ({
           type: "Feature" as const,
-          properties: { routeId: r.id, color: r.color, name: s.name },
+          properties: { stopId: s.id, routeId: r.id, color: r.color, name: s.name },
           geometry: { type: "Point" as const, coordinates: s.coords },
         })),
       );
@@ -2492,10 +2566,11 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
       // Click handler on shared bus stop dot layer
       map.on("click", "bus-stops-dot", (e) => {
         if (didDragStopRef.current) { didDragStopRef.current = false; return; }
-        const props = e.features?.[0]?.properties as { name?: string; routeId?: string } | undefined;
+        const props = e.features?.[0]?.properties as { stopId?: string; name?: string; routeId?: string } | undefined;
         const name = props?.name;
         const routeId = props?.routeId;
-        if (!name || !routeId) return;
+        const stopId = props?.stopId;
+        if (!name || !routeId || !stopId) return;
         if (!addStationToLineRef.current) e.originalEvent.stopPropagation();
         if (drawModeRef.current === "select") {
           const key = `${name}::${routeId}`;
@@ -2508,9 +2583,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
         const busRoute = BUS_ROUTES.find((r) => r.id === routeId);
         if (!busRoute) return;
         const { x, y } = e.point;
-        setStationPopup({ name, routeId, x, y, coords: [e.lngLat.lng, e.lngLat.lat] });
+        setStationPopup({ stopId, name, routeId, x, y, coords: [e.lngLat.lng, e.lngLat.lat] });
         setSelectedRouteId(busRoute.id);
-        setSelectedStop(name);
+        setSelectedStop(stopId);
       });
 
       map.on("mouseenter", "bus-stops-dot", () => { map.getCanvas().style.cursor = "pointer"; });
@@ -2579,12 +2654,13 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
           const coords: [number, number] = [e.lngLat.lng, e.lngLat.lat];
           const currentCounter = stopCounterRef.current;
           const tempName = `Station ${currentCounter}`;
+          const newStopIdValue = newStopId();
           const routeBeforeAdd = routesRef.current.find((r) => r.id === lineId);
           snapshotHistory();
           stopCounterRef.current = currentCounter + 1;
           setRoutes((prev) => prev.map((r) => {
             if (r.id !== lineId) return r;
-            const newStop = { name: tempName, coords };
+            const newStop = { id: newStopIdValue, name: tempName, coords };
             if (r.stops.length === 0) return { ...r, shape: undefined, stops: [newStop] };
             const insertIdx = bestInsertIndex(coords, r.stops);
             const newStops = [...r.stops.slice(0, insertIdx), newStop, ...r.stops.slice(insertIdx)];
@@ -2609,6 +2685,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
           void reverseGeocodeStation(coords[0], coords[1]).then((geoName) => {
             if (!geoName) return;
             setRoutes((prev) => {
+              // Suffixing duplicates is now purely cosmetic — identity lives in
+              // stop.id, so a repeated name no longer breaks anything. It just
+              // keeps the two "Yonge St" stops on a line tellable apart by eye.
               const allStopNames = new Set(prev.flatMap((r) => r.stops.map((s) => s.name)));
               let finalName = geoName;
               if (allStopNames.has(finalName)) {
@@ -2617,7 +2696,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
                 finalName = `${geoName} (${n})`;
               }
               return prev.map((r) =>
-                r.id === lineId ? { ...r, stops: r.stops.map(s => s.name === tempName ? { ...s, name: finalName } : s) } : r
+                r.id === lineId ? { ...r, stops: r.stops.map(s => s.id === newStopIdValue ? { ...s, name: finalName } : s) } : r
               );
             });
           });
@@ -2722,7 +2801,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
         if (!popup) return;
         if (!routesRef.current.some((r) => r.id === popup.routeId)) return;
         e.preventDefault();
-        handleDeleteStop(popup.name, popup.routeId);
+        handleDeleteStop(popup.stopId, popup.routeId);
         setStationPopup(null);
         return;
       }
@@ -2734,32 +2813,14 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
         drawModeRef.current = "normal";
       } else if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         e.preventDefault();
-        const prev = historyRef.current.pop();
-        if (prev !== undefined) {
-          redoStackRef.current.push({
-            routes: [...routesRef.current],
-            counter: stopCounterRef.current,
-          });
-          stopCounterRef.current = prev.counter;
-          routesRef.current = prev.routes;
-          setRoutes(prev.routes);
-          setCanUndo(historyRef.current.length > 0);
-          setCanRedo(true);
-        }
+        // Delegate to the same functions the toolbar buttons use. These used to
+        // be inline copies that only restored routes+counter, so Cmd+Z quietly
+        // dropped anything else in the snapshot. Safe to call from this
+        // once-installed listener: they touch only refs and stable setters.
+        handleUndo();
       } else if (e.key === "z" && (e.ctrlKey || e.metaKey) && e.shiftKey) {
         e.preventDefault();
-        const next = redoStackRef.current.pop();
-        if (next !== undefined) {
-          historyRef.current.push({
-            routes: [...routesRef.current],
-            counter: stopCounterRef.current,
-          });
-          stopCounterRef.current = next.counter;
-          routesRef.current = next.routes;
-          setRoutes(next.routes);
-          setCanUndo(true);
-          setCanRedo(redoStackRef.current.length > 0);
-        }
+        handleRedo();
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -2922,14 +2983,20 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
       .map((a) => {
         const from = a.args.from as number[];
         const to = a.args.to as number[];
+        // Prefer the server's road-snapped path; fall back to a straight line.
+        const path = Array.isArray(a.args.path)
+          ? (a.args.path as number[][]).map((p) => [Number(p[0]), Number(p[1])] as [number, number])
+          : null;
         return {
           type: "Feature" as const,
           geometry: {
             type: "LineString" as const,
-            coordinates: [
-              [Number(from[0]), Number(from[1])],
-              [Number(to[0]), Number(to[1])],
-            ] as [number, number][],
+            coordinates: path && path.length >= 2
+              ? path
+              : ([
+                  [Number(from[0]), Number(from[1])],
+                  [Number(to[0]), Number(to[1])],
+                ] as [number, number][]),
           },
           properties: {
             label: a.label,
@@ -3407,7 +3474,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     return cleanup;
   }, [measurePoints, mapLoaded]);
 
-  
+
 
   // ── generated route layer (re-renders when route or stops change)
   useEffect(() => {
@@ -3441,7 +3508,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
         type: "FeatureCollection",
         features: generatedRoute.stops.map((s) => ({
           type: "Feature",
-          properties: { name: s.name, disabled: disabledStops.has(s.name) },
+          properties: { stopId: s.id, name: s.name, disabled: disabledStops.has(s.name) },
           geometry: { type: "Point", coordinates: s.coords },
         })),
       } as GeoJSON.FeatureCollection<GeoJSON.Point>,
@@ -3503,11 +3570,13 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     map.on("click", "generated-route-line", () => setSelectedRouteId(null));
 
     map.on("click", "generated-stops-dot", (e) => {
-      const name = e.features?.[0]?.properties?.name as string | undefined;
-      if (!name) return;
+      const props = e.features?.[0]?.properties as { stopId?: string; name?: string } | undefined;
+      const name = props?.name;
+      const stopId = props?.stopId;
+      if (!name || !stopId) return;
       e.originalEvent.stopPropagation();
       setSelectedGeneratedStop((prev) => (prev === name ? null : name));
-      setStationPopup({ name, routeId: generatedRoute.id, x: e.point.x, y: e.point.y, coords: [e.lngLat.lng, e.lngLat.lat] });
+      setStationPopup({ stopId, name, routeId: generatedRoute.id, x: e.point.x, y: e.point.y, coords: [e.lngLat.lng, e.lngLat.lat] });
     });
 
     map.on("mouseenter", "generated-stops-dot", () => { map.getCanvas().style.cursor = "pointer"; });
@@ -3757,8 +3826,10 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
 	      map.on("mouseleave", `route-line-${route.id}`, () => { map.getCanvas().style.cursor = ""; map.setPaintProperty(`route-line-${route.id}`, "line-width", bus ? 1.5 : sc ? 3 : 7); });
 	      map.on("click", `stops-dot-${route.id}`, (e) => {
 	        if (didDragStopRef.current) { didDragStopRef.current = false; return; }
-	        const name = e.features?.[0]?.properties?.name as string | undefined;
-        if (!name) return;
+	        const props = e.features?.[0]?.properties as { stopId?: string; name?: string } | undefined;
+	        const name = props?.name;
+	        const stopId = props?.stopId;
+        if (!name || !stopId) return;
         e.originalEvent.stopPropagation();
         if (drawModeRef.current === "select") {
           const key = `${name}::${route.id}`;
@@ -3768,9 +3839,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
           setSelectedStations(new Set(next));
           return;
         }
-        setStationPopup({ name, routeId: route.id, x: e.point.x, y: e.point.y, coords: [e.lngLat.lng, e.lngLat.lat] });
+        setStationPopup({ stopId, name, routeId: route.id, x: e.point.x, y: e.point.y, coords: [e.lngLat.lng, e.lngLat.lat] });
         setSelectedRouteId(route.id);
-        setSelectedStop(name);
+        setSelectedStop(stopId);
       });
       map.on("mouseenter", `stops-dot-${route.id}`, () => { map.getCanvas().style.cursor = "pointer"; });
       map.on("mouseleave", `stops-dot-${route.id}`, () => { map.getCanvas().style.cursor = ""; });
@@ -3825,17 +3896,17 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     const layerId = `stops-dot-${lineId}`;
     if (!map.getLayer(layerId)) return;
 
-    let dragging: { name: string; coords: [number, number] } | null = null;
+    let dragging: { stopId: string; coords: [number, number] } | null = null;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const onMouseDown = (e: mapboxgl.MapMouseEvent & { features?: any[] }) => {
-      const name = e.features?.[0]?.properties?.name as string | undefined;
-      if (!name) return;
+      const stopId = e.features?.[0]?.properties?.stopId as string | undefined;
+      if (!stopId) return;
       // Allow dragging any stop (all routes are now editable)
       const route = routesRef.current.find((r) => r.id === lineId);
       if (!route) return;
       e.preventDefault();
-      dragging = { name, coords: [e.lngLat.lng, e.lngLat.lat] };
+      dragging = { stopId, coords: [e.lngLat.lng, e.lngLat.lat] };
       map.dragPan.disable();
       map.getCanvas().style.cursor = "grabbing";
     };
@@ -3847,7 +3918,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
       // Update map sources directly — no React re-render for smooth dragging
       const route = routesRef.current.find((r) => r.id === lineId);
       if (!route) return;
-      const allStops = route.stops.map((s) => s.name === dragging!.name ? { ...s, coords: newCoords } : s);
+      const allStops = route.stops.map((s) => s.id === dragging!.stopId ? { ...s, coords: newCoords } : s);
       const stopSrc = map.getSource(`stops-${lineId}`) as mapboxgl.GeoJSONSource | undefined;
       if (stopSrc) stopSrc.setData(stopsToGeoJSON({ ...route, stops: allStops }));
       const lineSrc = map.getSource(`route-${lineId}`) as mapboxgl.GeoJSONSource | undefined;
@@ -3857,22 +3928,23 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
 
     const onMouseUp = () => {
       if (!dragging) return;
-      const { name, coords } = dragging;
+      const { stopId, coords } = dragging;
       const route = routesRef.current.find((r) => r.id === lineId);
+      const stopName = route?.stops.find((s) => s.id === stopId)?.name;
       dragging = null;
       map.dragPan.enable();
       map.getCanvas().style.cursor = "";
       didDragStopRef.current = true;
       snapshotHistory();
       setRoutes((prev) =>
-        prev.map((r) => r.id === lineId ? { ...r, shape: undefined, stops: r.stops.map((s) => s.name === name ? { ...s, coords } : s) } : r)
+        prev.map((r) => r.id === lineId ? { ...r, shape: undefined, stops: r.stops.map((s) => s.id === stopId ? { ...s, coords } : s) } : r)
       );
       trackEvent("Station Moved", {
         ...getAnalyticsContext(),
         route_id: lineId,
         route_name: route?.name,
         route_type: route?.type,
-        stop_name: name,
+        stop_name: stopName,
         lng: Number(coords[0].toFixed(5)),
         lat: Number(coords[1].toFixed(5)),
       });
@@ -3997,7 +4069,10 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
       for (const route of routes) removeCustomLineFromMap(route.id);
     }
 
-    const applyRoutes = (incoming: Route[]) => {
+    const applyRoutes = (rawIncoming: Route[]) => {
+      // GTFS/JSON files carry no stop ids of ours — mint them before anything
+      // downstream tries to address an imported stop.
+      const incoming = withStopIds(rawIncoming);
       const incomingIds = new Set(incoming.map((r) => r.id));
       const nextRoutes = merge
         ? [...routes.filter((r) => !incomingIds.has(r.id)), ...incoming]
@@ -4112,7 +4187,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
 	          onSetAddStationToLine={setAddStationToLine}
 	          onActivateRoute={(routeId) => {
 	            const busRoute = BUS_ROUTES.find((r) => r.id === routeId);
-	            if (busRoute) setRoutes((prev) => [...prev, { ...busRoute }]);
+	            // BUS_ROUTES stops are already id'd in transit-data; withStopIds is
+	            // a cheap no-op guard so activation can never introduce an id-less stop.
+	            if (busRoute) setRoutes((prev) => [...prev, ...withStopIds([busRoute])]);
 	          }}
 	          onSetDrawMode={handleSetDrawMode}
 	          onSnapshotHistory={snapshotHistory}
@@ -4517,7 +4594,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
           {/*
           <div className="mx-1 h-6 w-px bg-stone-200" />
 
-          
+
            <div className="group relative">
             <button
               onClick={() => handleSetDrawMode("boundary")}
@@ -4700,7 +4777,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
 
       {/* Plans panel — slides in from the right */}
       <div
-        className={`pointer-events-auto absolute right-6 bottom-6 flex items-start transition-all duration-300 ease-in-out z-10 ${
+        className={`pointer-events-none absolute right-6 bottom-6 flex items-start transition-all duration-300 ease-in-out z-10 ${
           showPlansPanel && !selectedRoute && !showGeneratedPanel ? "translate-x-0" : "translate-x-[calc(100%+2.25rem)]"
         }`}
         style={{ top: "80px" }}
@@ -4709,6 +4786,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
           open={showPlansPanel}
           routes={routes}
           hiddenRoutes={hiddenRoutes}
+          transferExclusions={transferExclusions}
           currentPlanId={currentPlanId}
           planIsDirty={planIsDirty}
           authUser={authUser ?? null}
@@ -4778,9 +4856,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
         {selectedRoute ? (
           <RoutePanel
             route={selectedRoute}
-            selectedStop={selectedStop}
+            selectedStopId={selectedStop}
             stationPopulations={stationPopulations}
-            onDeleteStop={(name) => handleDeleteStop(name, selectedRoute.id)}
+            onDeleteStop={(stopId) => handleDeleteStop(stopId, selectedRoute.id)}
             onDeleteLine={() => handleDeleteCustomLine(selectedRoute.id)}
             onSnapToRoads={routes.some((r) => r.id === selectedRoute.id)
               ? () => handleSnapToRoads(selectedRoute)
@@ -4790,17 +4868,26 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
               : undefined}
             onClose={() => { setSelectedRouteId(null); setSelectedStop(null); }}
             allRoutes={routes}
-            pedestrianConnections={selectedStop ? PEDESTRIAN_CONNECTIONS.flatMap((conn) => {
-              if (conn.routeAId === selectedRoute.id && conn.stopAName === selectedStop) {
-                const r = routes.find((r) => r.id === conn.routeBId);
-                return r ? [{ route: r, stopName: conn.stopBName }] : [];
-              }
-              if (conn.routeBId === selectedRoute.id && conn.stopBName === selectedStop) {
-                const r = routes.find((r) => r.id === conn.routeAId);
-                return r ? [{ route: r, stopName: conn.stopAName }] : [];
-              }
-              return [];
-            }) : []}
+            transferExclusions={transferExclusions}
+            pedestrianConnections={(() => {
+              // PEDESTRIAN_CONNECTIONS is authored by stop *name*, so resolve
+              // the selected id back to a name before matching against it.
+              const selectedName = selectedStop
+                ? selectedRoute.stops.find((s) => s.id === selectedStop)?.name
+                : undefined;
+              if (!selectedName) return [];
+              return PEDESTRIAN_CONNECTIONS.flatMap((conn) => {
+                if (conn.routeAId === selectedRoute.id && conn.stopAName === selectedName) {
+                  const r = routes.find((r) => r.id === conn.routeBId);
+                  return r ? [{ route: r, stopName: conn.stopBName }] : [];
+                }
+                if (conn.routeBId === selectedRoute.id && conn.stopBName === selectedName) {
+                  const r = routes.find((r) => r.id === conn.routeAId);
+                  return r ? [{ route: r, stopName: conn.stopAName }] : [];
+                }
+                return [];
+              });
+            })()}
           />
         ) : showGeneratedPanel ? (
           <GeneratedRoutePanel
@@ -4915,43 +5002,60 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
           }
           return [];
         });
+        // The stops on other lines that are genuinely this same physical
+        // station. Computed once and reused for the connection chips, "remove
+        // from all lines" and cross-line rename, so all three agree.
+        const counterparts = transferCounterparts(
+          routes,
+          stationPopup.routeId,
+          { name: stationPopup.name, coords: stationPopup.coords },
+          (otherRouteId) =>
+            transferExclusions.has(
+              transferExclusionKey(stationPopup.routeId, otherRouteId, stationPopup.name),
+            ),
+        );
         return (
           <StationPopup
             popup={stationPopup}
             allRoutes={generatedRoute ? [...routes, generatedRoute] : routes}
             isDeletable={isCustom}
-            connectedRoutes={
-              routes.filter((r) => {
-                if (r.id === stationPopup.routeId) return false;
-                const match = r.stops.find((s) => s.name === stationPopup.name);
-                if (!match) return false;
-                // Only treat as a transfer if the stops are physically co-located (≤50m)
-                if (haversineKm(stationPopup.coords, match.coords) > 0.05) return false;
-                // Respect explicit user dismissals
-                const key = [stationPopup.routeId, r.id].sort().join(":") + ":" + stationPopup.name;
-                return !transferExclusions.has(key);
-              })
-            }
+            connectedRoutes={counterparts.map((c) => c.route)}
             pedestrianConnections={walkinConnections}
             onRemoveTransfer={(targetRouteId) => {
-              const key = [stationPopup.routeId, targetRouteId].sort().join(":") + ":" + stationPopup.name;
+              const key = transferExclusionKey(stationPopup.routeId, targetRouteId, stationPopup.name);
+              // Dismissals are undoable, so snapshot before mutating.
+              snapshotHistory();
               setTransferExclusions((prev) => new Set([...prev, key]));
             }}
             onClose={() => setStationPopup(null)}
-            onDelete={() => { handleDeleteStop(stationPopup.name, stationPopup.routeId); setStationPopup(null); }}
-            onDeleteFromAll={() => { handleDeleteStopFromAllRoutes(stationPopup.name); setStationPopup(null); }}
+            onDelete={() => { handleDeleteStop(stationPopup.stopId, stationPopup.routeId); setStationPopup(null); }}
+            onDeleteFromAll={() => {
+              // This stop plus its co-located counterparts — not "every stop
+              // anywhere that happens to share this name".
+              handleDeleteStopsFromRoutes([
+                { routeId: stationPopup.routeId, stopId: stationPopup.stopId },
+                ...counterparts.flatMap((c) => c.stop.id ? [{ routeId: c.route.id, stopId: c.stop.id }] : []),
+              ]);
+              setStationPopup(null);
+            }}
             onRename={(newName) => {
-              const oldName = stationPopup.name;
+              // Rename this stop and the other lines' stops at the same physical
+              // station (so a transfer keeps one shared name). Previously this
+              // renamed every stop sharing the old name on every route, which
+              // dragged unrelated stops along.
+              const renameIds = new Set<string>([
+                stationPopup.stopId,
+                ...counterparts.flatMap((c) => c.stop.id ? [c.stop.id] : []),
+              ]);
               snapshotHistory();
               setRoutes((prev) => prev.map((r) => ({
                 ...r,
-                stops: r.stops.map((s) => s.name === oldName ? { ...s, name: newName } : s),
+                stops: r.stops.map((s) => s.id && renameIds.has(s.id) ? { ...s, name: newName } : s),
               })));
               setGeneratedRoute((r) => r ? {
                 ...r,
-                stops: r.stops.map((s) => s.name === oldName ? { ...s, name: newName } : s),
+                stops: r.stops.map((s) => s.id && renameIds.has(s.id) ? { ...s, name: newName } : s),
               } : r);
-              setSelectedStop((s) => s === oldName ? newName : s);
               setStationPopup((p) => p ? { ...p, name: newName } : p);
             }}
             onAddTransfer={!isCustom ? undefined : (targetRouteId) => {
@@ -4966,7 +5070,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
               setRoutes((prev) => prev.map((r) => {
                 if (r.id !== targetRouteId) return r;
                 if (r.stops.some((s) => s.name === name)) return r;
-                const newStop = { name, coords };
+                // A distinct Stop object on the other route that deliberately
+                // shares the name — co-location is what makes it a transfer.
+                const newStop = { id: newStopId(), name, coords };
                 if (r.stops.length === 0) return { ...r, stops: [newStop] };
                 const roadSnapped = r.type === "bus" || r.type === "streetcar";
                 // 📖 Learn: "minimum detour" insertion — for each gap between
@@ -5047,6 +5153,10 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
           const approvalChance = Math.max(15, Math.min(92, 85 - prRaw * 1.5));
           const minutesSaved = Math.round(totalKm * (parsed.type === "subway" ? 3.5 : 2));
           const dollarsSaved = `$${(minutesSaved * 0.3).toFixed(1)}/trip`;
+          // AI-proposed stops arrive as bare {name, coords}. Id them once here:
+          // the same array feeds both the editable route and the stats-panel
+          // copy below, which share a route id and must agree on stop ids.
+          const councilStops = parsed.stops.map((s) => ({ ...s, id: newStopId() }));
           const newCustomLine: Route = {
             id,
             name: parsed.name,
@@ -5056,7 +5166,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
             type: parsed.type,
             description: `${costStr} · ${buildYears}yr build · Approval ${Math.round(approvalChance)}% · PR ${prNorm}/10`,
             frequency: `−${minutesSaved}min commute`,
-            stops: parsed.stops,
+            stops: councilStops,
           };
           setRoutes((prev) => [...prev, newCustomLine]);
           trackEvent("Council Route Added", {
@@ -5077,7 +5187,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
             frequency: `−${minutesSaved}min commute`,
             color: parsed.color,
             type: parsed.type,
-            stops: parsed.stops,
+            stops: councilStops,
             stats: {
               cost: costStr,
               timeline: `${buildYears} yrs`,

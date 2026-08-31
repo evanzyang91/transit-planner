@@ -71,3 +71,11 @@ CLAUDE.md
 # db/db/*.go
 
 TTC Routes and Schedules Data/*
+.env.sentry-build-plugin
+
+# Claude Code local scratch (worktrees dir reaches hundreds of MB)
+.claude/worktrees/
+CLAUDE.local.md
+
+# fallow cache
+.fallow/

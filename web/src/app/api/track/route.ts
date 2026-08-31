@@ -1,6 +1,26 @@
 import type { NextRequest } from "next/server";
 import { env } from "~/env.js";
 
+type VisitWebhookType = "regular_visit" | "referral_visit";
+
+function getVisitWebhookType(opts: {
+  event: string;
+  meta: Record<string, string>;
+  webhookType?: VisitWebhookType;
+}): VisitWebhookType {
+  if (opts.webhookType === "referral_visit") return "referral_visit";
+
+  const url = opts.meta["🔗 URL"];
+  const params = opts.meta["🔗 Params"];
+  if (params) return "referral_visit";
+  if (url?.includes("?")) return "referral_visit";
+  if (/from \*\*.+\*\*|CUSTOM REFERRAL/i.test(opts.event)) {
+    return "referral_visit";
+  }
+
+  return "regular_visit";
+}
+
 // POST /api/track  — body: { event: string, meta?: Record<string, string> }
 //
 // Why a server route instead of calling Discord from the browser?
@@ -13,16 +33,17 @@ export async function POST(req: NextRequest) {
   const {
     event,
     meta = {},
-    webhookType = "regular_visit",
+    webhookType,
   } = (await req.json()) as {
     event: string;
     meta?: Record<string, string>;
-    webhookType?: "regular_visit" | "referral_visit";
+    webhookType?: VisitWebhookType;
   };
 
+  const visitWebhookType = getVisitWebhookType({ event, meta, webhookType });
   const webhookUrl =
-    webhookType === "referral_visit"
-      ? (env.DISCORD_REFERRAL_VISITS_WEBHOOK_URL ?? env.DISCORD_WEBHOOK_URL)
+    visitWebhookType === "referral_visit"
+      ? env.DISCORD_REFERRAL_VISITS_WEBHOOK_URL
       : (env.DISCORD_REGULAR_VISITS_WEBHOOK_URL ?? env.DISCORD_WEBHOOK_URL);
 
   // No secret configured (e.g. fresh clone) → do nothing. Tracking is non-critical.

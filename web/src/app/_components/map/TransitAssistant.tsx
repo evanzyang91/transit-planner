@@ -22,36 +22,15 @@ const MD = {
   a: ({ children, href }: { children?: React.ReactNode; href?: string }) => <a href={href} className="underline">{children}</a>,
 };
 
-// Client copy of the prompt suffix — avoids importing server-only modules in UI.
-// Keep this in sync with the copy in server/ai-map-tools.ts.
-// NOTE: keep in sync with MAP_ASSISTANT_PROMPT_SUFFIX in server/ai-map-tools.ts
-const MAP_PROMPT = `You are a transit planner's spatial assistant. The MAP is the answer — prose is secondary.
-
-Rules:
-- Keep text short (1–2 sentences), but ALWAYS explain what you drew. Light markdown (bold, a short bullet) is OK; never long paragraphs.
-- For EVERY spatial finding, call highlight_area, draw_corridor, or drop_pin.
-- Whenever you draw a highlight_area, SAY SOMETHING about that polygon in your text: name the place, what the gap/cluster is, and why it matters. Never leave a polygon unexplained.
-
-Highlight discipline — be precise, not lazy:
-- NEVER shade water. Lake Ontario, the harbour, rivers and the island channels are not gaps — gaps are about PEOPLE, so polygons must stay over inhabited land.
-- Use find_coverage_gaps to get REAL, named gaps instead of guessing; use describe_location to confirm a point is inhabited land (likelyInhabited: true) before you highlight it.
-- Keep each polygon FOCUSED on ONE underserved pocket, at most a few km across. Do NOT shade an entire borough, ward, or district — that is not actionable. If a large area is weak, pick the single worst pocket. (Oversized polygons are rejected by the server.)
-- Before claiming a gap, use query_network (stops_in_bbox / nearest_stop) to confirm there really are few/no stops there. Don't guess.
-- Trace the ACTUAL outline: 6–12 vertices following the real shape. NEVER a 4-corner rectangle or bounding box — organic shapes only.
-
-Example:
-User: "Where are the biggest network gaps in midtown?"
-Assistant text: "Shaded **Leaside** — dense housing but no rapid transit within ~1.5 km — and pinned the worst intersection."
-Tools: fly_to → query_network → highlight_area(8-point Leaside outline) → drop_pin
-
-Coordinates are [longitude, latitude] in WGS84. Polygons are arrays of [lng, lat] pairs.`;
+// The system prompt is now built SERVER-side (server/map-data/prompt.ts) from
+// the live network we send with each message — the old client copy drifted
+// from the server's and doubled as an injection vector.
 
 // 📖 Learn: Web Speech API isn't fully standardised — Chrome/Edge/Safari
 // expose it as `webkitSpeechRecognition`, the spec'd name is `SpeechRecognition`,
 // and Firefox doesn't ship it at all. We feature-detect both and hide the
 // button entirely when unsupported instead of showing a broken control.
-interface SpeechRecognitionConstructor {
-  new (): {
+type SpeechRecognitionConstructor = new () => {
     lang: string;
     continuous: boolean;
     interimResults: boolean;
@@ -61,7 +40,6 @@ interface SpeechRecognitionConstructor {
     start: () => void;
     stop: () => void;
   };
-}
 
 function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | null {
   if (typeof window === "undefined") return null;
@@ -72,26 +50,12 @@ function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-// Total great-circle length of a route in km.
-function routeLengthKm(route: Route): number {
-  let total = 0;
-  for (let i = 1; i < route.stops.length; i++) {
-    total += haversineKm(route.stops[i - 1]!.coords, route.stops[i]!.coords);
-  }
-  return total;
-}
-
-// Real coverage picture from the census population centres we ship. Used to
-// de-starve the assistant's system prompt (so it starts with situational
-// awareness instead of having to tool-call for everything) AND to ground the
-// suggestion chips in data we actually have.
+// Coarse coverage picture from the shipped population centres — used ONLY to
+// pick relevant suggestion chips. The AI's own coverage numbers come from the
+// server's census raster, not from this.
 // 📖 Learn: a centre counts as "served" if ANY stop is within its serviceRadiusKm
 // (a coarse catchment model — the same one the Analysis panel's City Coverage uses).
 interface CoverageSnapshot {
-  pctPopulation: number;
-  citiesServed: number;
-  totalCities: number;
-  totalKm: number;
   topGaps: { name: string; population: number }[];
 }
 
@@ -103,57 +67,13 @@ function computeCoverageSnapshot(routes: Route[]): CoverageSnapshot {
       served.add(c.id);
     }
   }
-  const totalPop = POPULATION_CENTERS.reduce((s, c) => s + c.population, 0);
-  const servedPop = POPULATION_CENTERS.filter((c) => served.has(c.id)).reduce((s, c) => s + c.population, 0);
   const topGaps = POPULATION_CENTERS
     .filter((c) => !served.has(c.id))
     .sort((a, b) => b.population - a.population)
     .slice(0, 5)
     .map((c) => ({ name: c.name, population: c.population }));
 
-  return {
-    pctPopulation: totalPop > 0 ? Math.round((servedPop / totalPop) * 1000) / 10 : 0,
-    citiesServed: served.size,
-    totalCities: POPULATION_CENTERS.length,
-    totalKm: Math.round(routes.reduce((s, r) => s + routeLengthKm(r), 0)),
-    topGaps,
-  };
-}
-
-function buildSystemPrompt(routes: Route[], coverage: CoverageSnapshot): string {
-  const totalStops = routes.reduce((s, r) => s + r.stops.length, 0);
-  const byType: Record<string, number> = {};
-  for (const r of routes) byType[r.type] = (byType[r.type] ?? 0) + 1;
-  const routeList = routes
-    .slice(0, 20)
-    .map((r) => `- ${r.name} (${r.type}, ${r.stops.length} stops)`)
-    .join("\n");
-
-  const gapsLine = coverage.topGaps.length > 0
-    ? coverage.topGaps.map((g) => `${g.name} (${(g.population / 1000).toFixed(0)}k)`).join(", ")
-    : "none — every catalogued centre has service nearby";
-
-  return `You are a transit planner's MAP assistant. You answer by DRAWING on the map, not by writing essays.
-
-OUTPUT RULES (strict):
-- DRAW FIRST, talk last. Call your tools, THEN write ONE final caption of at most two short sentences describing what is now on the map. Never narrate intentions ("I'll shade…", "Let me…", "Perfect —"): just do it silently, then caption once.
-- No numbered lists, no headers, no bullet walls. Never end by asking a clarifying question — pick the best answer and draw it; the user can refine.
-- Anything you mention you MUST draw in the SAME reply: a gap → highlight_area, a corridor/route → draw_corridor, a key point → drop_pin. If you didn't draw it, don't say it.
-
-CORRIDOR GEOMETRY — draw_corridor is a STRAIGHT line from \`from\` to \`to\`, so the endpoints define the axis:
-- Name a real road? Put both endpoints ON that road. East–west roads (Highway 7, Eglinton, Steeles) → from and to share nearly the SAME latitude. North–south roads (Yonge, Hurontario, Bayview) → the SAME longitude. A diagonal line means you picked the wrong endpoints.
-- Use describe_location / query_network to fetch the REAL coordinates of each endpoint before drawing — do not guess them. For a route that bends, draw one draw_corridor per straight segment.
-
-Network context (for YOUR reasoning — do NOT recite these back as prose):
-- ${routes.length} routes · ${totalStops} stops · ${coverage.totalKm} km · ${Object.entries(byType).map(([t, c]) => `${c} ${t}`).join(", ")}
-- Reaches ~${coverage.pctPopulation}% of catalogued GTA population (${coverage.citiesServed}/${coverage.totalCities} centres)
-- Largest underserved centres: ${gapsLine}
-Use these to decide WHERE to draw. For precise spatial work, call find_coverage_gaps / describe_location / query_network.
-
-Routes (up to 20 shown):
-${routeList}
-
-${MAP_PROMPT}`;
+  return { topGaps };
 }
 
 interface Props {
@@ -172,10 +92,22 @@ export function TransitAssistant({ routes, seed, onSeedConsumed }: Props) {
     setEditing,
     removeAnnotation,
   } = useAIAnnotations();
-  // Coverage drives both the system prompt and the suggestion chips, so compute
-  // it once. Recomputes only when the routes change.
+  // Coverage feeds only the suggestion chips now; the AI's prompt + numbers
+  // are built server-side from the routes we send below.
   const coverage = useMemo(() => computeCoverageSnapshot(routes), [routes]);
-  const systemPrompt = useMemo(() => buildSystemPrompt(routes, coverage), [routes, coverage]);
+
+  // Trimmed live-network payload sent with every message so the server tools
+  // query exactly the network on screen (user-drawn lines included).
+  const networkRoutes = useCallback(
+    () =>
+      routes.map((r) => ({
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        stops: r.stops.map((s) => ({ name: s.name, coords: s.coords })),
+      })),
+    [routes],
+  );
 
   const handleToolCall = useCallback(
     ({ name, args, turnId }: { name: string; args: Record<string, unknown>; turnId: string }) => {
@@ -186,9 +118,10 @@ export function TransitAssistant({ routes, seed, onSeedConsumed }: Props) {
     [add],
   );
 
-  const { messages, isLoading, error, sendMessageStreaming, reset } = useAnthropic(systemPrompt, {
+  const { messages, isLoading, error, sendMessageStreaming, reset } = useAnthropic(undefined, {
     mapTools: true,
     onToolCall: handleToolCall,
+    networkRoutes,
     // Persist the conversation so closing/reopening the panel (or reloading)
     // doesn't wipe it. Cleared via the "New chat" button below.
     persistKey: "ask-ai-chat-v1",
@@ -281,7 +214,7 @@ export function TransitAssistant({ routes, seed, onSeedConsumed }: Props) {
     }
   }
 
-  // Chips grounded in data we actually have: find_coverage_gaps (the >1 km
+  // Chips grounded in data we actually have: rank_service_areas (the >1 km
   // threshold) and the real largest-underserved centre from the coverage
   // snapshot. The old "transfer hubs" chip pointed at data no tool exposes.
   const SUGGESTIONS = useMemo(() => {

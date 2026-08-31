@@ -18,6 +18,13 @@ export const env = createEnv({
     DISCORD_REGULAR_VISITS_WEBHOOK_URL: z.string().url().optional(),
     DISCORD_REFERRAL_VISITS_WEBHOOK_URL: z.string().url().optional(),
     DISCORD_BUG_REPORTS_WEBHOOK_URL: z.string().url().optional(),
+    // Langfuse LLM tracing. All optional: with no keys the tracer is a no-op,
+    // so a fresh clone builds and runs without a Langfuse account.
+    LANGFUSE_SECRET_KEY: z.string().min(1).optional(),
+    LANGFUSE_PUBLIC_KEY: z.string().min(1).optional(),
+    LANGFUSE_BASE_URL: z.string().url().optional(),
+    // Traces always flow in production; this opts local dev in too.
+    LANGFUSE_TRACING_DEV: z.enum(["true", "false"]).optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -53,6 +60,10 @@ export const env = createEnv({
       process.env.DISCORD_REFERRAL_VISITS_WEBHOOK_URL,
     DISCORD_BUG_REPORTS_WEBHOOK_URL:
       process.env.DISCORD_BUG_REPORTS_WEBHOOK_URL,
+    LANGFUSE_SECRET_KEY: process.env.LANGFUSE_SECRET_KEY,
+    LANGFUSE_PUBLIC_KEY: process.env.LANGFUSE_PUBLIC_KEY,
+    LANGFUSE_BASE_URL: process.env.LANGFUSE_BASE_URL,
+    LANGFUSE_TRACING_DEV: process.env.LANGFUSE_TRACING_DEV,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

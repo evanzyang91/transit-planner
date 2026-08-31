@@ -772,14 +772,14 @@ export async function* runCouncil(input: CouncilInput): AsyncGenerator<string> {
     // ── PHASE 1: SEED (both planners in parallel) ─────────────────────────────
     const [seedA, seedB] = await Promise.all([
       collectTurnWithRoute(
-        ag("planner_a"), sessions["planner_a"]!,
+        ag("planner_a"), sessions.planner_a!,
         brief + "\n\nPropose 6–20 stations. For each, justify on merit: population density served, " +
         "distance from nearest existing station, and cost contribution to total route length. " +
         "Do not retain a stop because of where it falls in sequence — every stop must earn its place.",
         providerName,
       ),
       collectTurnWithRoute(
-        ag("planner_b"), sessions["planner_b"]!,
+        ag("planner_b"), sessions.planner_b!,
         brief + "\n\nPropose 6–20 stations for the most cost-efficient corridor. " +
         "For each stop, state the nearest intersection, Cost Risk 1–10, and Ridership ROI 1–10. " +
         "Cut any stop where Cost Risk exceeds Ridership ROI. Prefer direct alignments and fewer, higher-ridership stops. " +
@@ -861,7 +861,7 @@ export async function* runCouncil(input: CouncilInput): AsyncGenerator<string> {
       // Run only the agents the orchestrator selected
       if (directive.activeAgents.includes("nimby") || directive.activeAgents.includes("equity")) {
         for await (const { chunk, full } of turn(
-          ag("nimby"), sessions["nimby"]!,
+          ag("nimby"), sessions.nimby!,
           `Alex's proposal:\n${routeA ? JSON.stringify(routeA, null, 2) : "(none)"}\n\n` +
           `Jordan's proposal:\n${routeB ? JSON.stringify(routeB, null, 2) : "(none)"}\n\n` +
           `Affected areas: ${neighbourhoods.join(", ") || "Toronto"}.${focusContext}` +
@@ -873,7 +873,7 @@ export async function* runCouncil(input: CouncilInput): AsyncGenerator<string> {
 
       if (directive.activeAgents.includes("pr") || directive.activeAgents.includes("cost")) {
         for await (const { chunk, full } of turn(
-          ag("pr"), sessions["pr"]!,
+          ag("pr"), sessions.pr!,
           `**Alex:** ${fullA.slice(0, 300)}…\n**Jordan:** ${fullB.slice(0, 300)}…\n` +
           `**NIMBY:** ${fullN.slice(0, 200) || "no concerns raised yet"}${focusContext}` +
           formatSimForAgent(simA, simB, "pr") + "\n\n" +
@@ -904,7 +904,7 @@ export async function* runCouncil(input: CouncilInput): AsyncGenerator<string> {
     if (fullN || fullPr) {
       const allProposed = [stopsLabel(routeA), stopsLabel(routeB)].filter((s) => s !== "(none)").join("; ") || "(none)";
       for await (const { chunk, full, route } of turnWithRoute(
-        ag("rebuttal"), sessions["rebuttal"]!,
+        ag("rebuttal"), sessions.rebuttal!,
         brief +
         `\n\n**Alex summary:** ${summaryA}` +
         `\n**Jordan summary:** ${summaryB}` +
@@ -923,7 +923,7 @@ export async function* runCouncil(input: CouncilInput): AsyncGenerator<string> {
     const summaryReb = fullReb ? await compressAgentOutput(fullReb, providerName) : "";
     let fullCom = "", routeCom: Record<string, unknown> | null = null;
     for await (const { chunk, full, route } of turnWithRoute(
-      ag("commission"), sessions["commission"]!,
+      ag("commission"), sessions.commission!,
       brief +
       `\n\n**Planner A (Alex):** ${summaryA}` +
       `\n**Planner B (Jordan):** ${summaryB}` +

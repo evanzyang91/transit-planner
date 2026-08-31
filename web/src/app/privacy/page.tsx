@@ -5,11 +5,11 @@ import { InfoFooter } from "../_components/InfoFooter";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
-  description: "Privacy Policy for Transit Planner — how data is collected, stored, and handled in the application.",
+  description: "Privacy Policy for Transit Planner — how data is collected, stored, shared with AI and analytics providers, and handled in the application.",
   robots: { index: true, follow: false },
 };
 
-const LAST_UPDATED = "April 22, 2026";
+const LAST_UPDATED = "August 31, 2026";
 
 const privacySections = [
   {
@@ -36,6 +36,18 @@ const privacySections = [
           {
             label: "User content",
             desc: "Routes, stops, boundaries, uploads, and messages you submit (including AI prompts and planning context).",
+          },
+          {
+            label: "AI conversations",
+            desc: "When you use the AI assistant, your message and the assistant's reply are processed, along with the tools it runs on your behalf and the arguments and results of those tools — for example a map area you asked about, or the ranked service-gap results returned for it.",
+          },
+          {
+            label: "Feedback and bug reports",
+            desc: "If you submit feedback, the message you write and the name you optionally provide are sent to the deployment operator.",
+          },
+          {
+            label: "Network and approximate location",
+            desc: "Your IP address, and coarse location derived from it by the hosting provider — country, region, city, approximate coordinates, postal code, and timezone. This is derived from the network connection, not from device GPS, and is approximate.",
           },
           {
             label: "Usage data",
@@ -75,6 +87,8 @@ const privacySections = [
           "Provide core functionality — map editing, imports/exports, AI-assisted workflows.",
           "Maintain session history and recover work, where enabled.",
           "Measure product usage and understand which tools are used most often, such as route generation, council workflows, overlays, and network-building actions.",
+          "Debug and improve AI quality — recorded traces of an AI turn let the operator see which tool the assistant chose, what it received back, and where an answer went wrong.",
+          "Notify the deployment operator of activity such as new visits, submitted feedback, and reported bugs.",
           "Monitor performance, troubleshoot errors, and prevent abuse.",
         ].map((item, i) => (
           <li key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
@@ -112,13 +126,28 @@ const privacySections = [
             },
             {
               label: "AI services",
-              desc: "Prompts and related context may be sent to AI model providers when AI features are used.",
+              desc: "When AI features are used, your prompts and the surrounding planning context are sent to the configured model provider (Anthropic, or Google Gemini) to generate a response. Their privacy policy applies.",
               color: "#7c3aed", bg: "#f5f3ff",
             },
             {
+              label: "AI observability",
+              desc: "If tracing is enabled for a deployment, a record of each AI turn may be sent to Langfuse. A trace includes your message, the assistant's reply, the tools it called with their arguments and results, and the model name, token counts, and estimated cost. The Langfuse project used by a deployment may be hosted in the United States or the European Union, depending on how the operator configured it.",
+              color: "#0d9488", bg: "#f0fdfa",
+            },
+            {
+              label: "Operator notifications",
+              desc: "If webhooks are configured, the app posts activity notices to the operator's Discord workspace. These can include visit events with the IP address and derived approximate location described in section 2, the first 200 characters of an AI chat message, council planning request details, and the full text of feedback and bug reports.",
+              color: "#4f46e5", bg: "#eef2ff",
+            },
+            {
               label: "Text-to-speech",
-              desc: "If enabled, selected text may be sent to a speech provider to generate audio output.",
+              desc: "If enabled, selected text may be sent to a speech provider (ElevenLabs) to generate audio output.",
               color: "#0891b2", bg: "#ecfeff",
+            },
+            {
+              label: "Hosting and data storage",
+              desc: "Application data and the reference datasets behind planning tools are stored with the deployment's backend provider (Supabase). Hosted deployments run on a cloud host (Vercel), which processes requests and provides the approximate-location headers noted above.",
+              color: "#57534e", bg: "#f5f5f4",
             },
           ].map((item) => (
             <div
@@ -149,11 +178,20 @@ const privacySections = [
     number: "5",
     title: "Data Retention",
     content: (
-      <p style={{ fontSize: 14.5, color: "#57534e", lineHeight: 1.75 }}>
-        Retention depends on deployment configuration. Local and self-hosted deployments can choose to retain data
-        only on the local machine or server. Hosted deployments may retain data to support features like session
-        history and auditing. Contact your deployment operator for their specific retention policy.
-      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p style={{ fontSize: 14.5, color: "#57534e", lineHeight: 1.75 }}>
+          Retention depends on deployment configuration. Local and self-hosted deployments can choose to retain data
+          only on the local machine or server. Hosted deployments may retain data to support features like session
+          history and auditing. Contact your deployment operator for their specific retention policy.
+        </p>
+        <p style={{ fontSize: 14.5, color: "#57534e", lineHeight: 1.75 }}>
+          Information already sent to the third parties in section 4 is retained under their policies and settings,
+          not this one. In practice that means notifications posted to an operator&rsquo;s Discord workspace persist in
+          that channel until someone deletes them, and AI traces persist for the retention period configured on the
+          operator&rsquo;s Langfuse project. AI conversation state itself is held in server memory for an active session
+          and is lost when the server restarts.
+        </p>
+      </div>
     ),
   },
   {
@@ -195,6 +233,16 @@ const privacySections = [
           Your choices depend on the deployment you are using. Local and self-hosted deployments may allow the
           operator to disable analytics entirely. Hosted deployments may also offer browser controls, privacy tools,
           or account settings that affect analytics and stored data.
+        </p>
+        <p style={{ fontSize: 14.5, color: "#57534e", lineHeight: 1.75 }}>
+          This build honours a browser-level opt-out: setting a{" "}
+          <code style={{ fontSize: 13, backgroundColor: "#f5f5f4", padding: "1px 5px", borderRadius: 4 }}>
+            skip_tracking
+          </code>{" "}
+          key to any non-empty value in your browser local storage stops product analytics and visit reporting from
+          that browser. Because it is stored per browser, it does not carry across devices, and clearing site data
+          removes it. It does not affect the AI features described in sections 2 and 4 — if you do not want your
+          conversations processed or recorded, do not use the AI assistant.
         </p>
         <p style={{ fontSize: 14.5, color: "#57534e", lineHeight: 1.75 }}>
           If you want data deleted, exported, or corrected, contact the operator of your deployment. If you run
@@ -252,7 +300,8 @@ export default function PrivacyPage() {
             </h1>
           </div>
           <p style={{ fontSize: 15, color: "#78716c", maxWidth: 560 }}>
-            How Transit Planner handles information, including analytics and product usage tracking, in a typical deployment.
+            How Transit Planner handles information — including AI conversations, approximate location, analytics, and
+            product usage tracking — in a typical deployment.
           </p>
           <p style={{ fontSize: 12, color: "#a8a29e", marginTop: 10 }}>Last updated: {LAST_UPDATED}</p>
         </div>

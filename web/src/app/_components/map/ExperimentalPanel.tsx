@@ -17,25 +17,10 @@ import type { Route } from "~/app/map/transit-data";
 import { TransitAssistant } from "./TransitAssistant";
 import { haversineKm } from "~/app/map/geo-utils";
 import { POPULATION_CENTERS } from "~/app/map/population-centers";
-
-// ── Shared helpers ─────────────────────────────────────────────────────────────
-
-function parseHeadway(frequency: string, servicePattern?: Route["servicePattern"]): number {
-  if (servicePattern?.headwayMinutes) return servicePattern.headwayMinutes;
-  const range = frequency.match(/(\d+)[–\-](\d+)/);
-  if (range) return (parseInt(range[1]!) + parseInt(range[2]!)) / 2;
-  const single = frequency.match(/(\d+)\s*min/i);
-  if (single) return parseInt(single[1]!);
-  return 30;
-}
-
-function routeLengthKm(route: Route): number {
-  let total = 0;
-  for (let i = 1; i < route.stops.length; i++) {
-    total += haversineKm(route.stops[i - 1]!.coords, route.stops[i]!.coords);
-  }
-  return total;
-}
+// Shared with the server AI tools — one formula, one source of truth (see
+// lib/ridership-model.ts and lib/network-stats.ts for the "why").
+import { parseHeadway, forecastRouteRidership } from "~/lib/ridership-model";
+import { routeLengthKm } from "~/lib/network-stats";
 
 // ── Scoring ───────────────────────────────────────────────────────────────────
 
@@ -381,18 +366,6 @@ function computeCostBreakdown(route: Route, tunnelPct: number, elevatedPct: numb
   return { surfacePct, tunnelPct, elevatedPct, capitalM: km * blended, operatingM: km * 1.8, totalKm: km };
 }
 
-// ── Ridership gravity model ────────────────────────────────────────────────────
-
-function forecastRidership(route: Route, stationPop: Map<string, number>): number {
-  const headway = parseHeadway(route.frequency, route.servicePattern);
-  const freqFactor = Math.max(0.1, 60 / headway);
-  const mf: Record<string, number> = { subway: 1.5, lrt: 1.2, go_train: 0.6, streetcar: 1.0, bus: 0.5 };
-  let pop = 0;
-  for (const s of route.stops) pop += stationPop.get(s.name) ?? 0;
-  if (pop === 0) pop = route.stops.length * 5000;
-  return Math.round((pop * freqFactor * (mf[route.type] ?? 0.8)) / 365);
-}
-
 // ── Elevation model (rough GTA terrain) ───────────────────────────────────────
 
 function estimateElevationM(coords: [number, number]): number {
@@ -651,7 +624,7 @@ export function ExperimentalPanel({
   // ── Cost / Ridership / Elevation / Gaps ──
   const costRoute = useMemo(() => routes.find((r) => r.id === costRouteId) ?? null, [routes, costRouteId]);
   const costBreakdown = useMemo(() => costRoute ? computeCostBreakdown(costRoute, tunnelPct, elevatedPct) : null, [costRoute, tunnelPct, elevatedPct]);
-  const ridershipForecasts = useMemo(() => routes.map((r) => ({ route: r, daily: forecastRidership(r, stationPopulations) })).sort((a, b) => b.daily - a.daily).slice(0, 10), [routes, stationPopulations]);
+  const ridershipForecasts = useMemo(() => routes.map((r) => ({ route: r, daily: forecastRouteRidership(r, stationPopulations) })).sort((a, b) => b.daily - a.daily).slice(0, 10), [routes, stationPopulations]);
   const elevRoute = useMemo(() => routes.find((r) => r.id === elevRouteId) ?? null, [routes, elevRouteId]);
   const elevProfile = useMemo(() => elevRoute ? elevRoute.stops.map((s) => ({ name: s.name, elev: estimateElevationM(s.coords) })) : [], [elevRoute]);
   const gapCenters = useMemo(() => {

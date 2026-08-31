@@ -38,6 +38,16 @@ export interface AIProvider {
   // Creates a conversation thread tied to an assistant. Returns an opaque ID.
   createThread(assistantId: string): Promise<string>;
 
+  /**
+   * Does this provider still hold both of these ids?
+   *
+   * Sessions live in PROCESS MEMORY, so they disappear on a dev hot-reload, a
+   * server restart, or a request landing on a different serverless instance —
+   * while the browser keeps its ids in localStorage and sends them anyway.
+   * Callers use this to start a fresh session instead of failing the request.
+   */
+  hasSession?(assistantId: string, threadId: string): boolean;
+
   // Streams a reply to `content` in the given thread. Yields text chunks.
   streamMessage(
     threadId: string,
@@ -65,10 +75,20 @@ export interface AIProvider {
     maxTokens?: number,
   ): AsyncGenerator<ToolStreamChunk, void, unknown>;
 
-  /** Map-assistant mode: multi-tool loop with query_network server-side. */
+  /**
+   * Map-assistant mode: multi-tool loop over the shared registry
+   * (server/map-data/tools.ts). `ctx` carries the per-request grounding —
+   * the user's live network and the artifact store that show_area resolves
+   * against. Read tools execute server-side; write tools are validated /
+   * geometry-resolved server-side and forwarded to the client.
+   */
+  // 📖 Learn: `import type` below is erased at compile time, so the circular
+  // reference (tools.ts imports ToolDefinition from this file) is types-only
+  // and safe — no runtime import cycle exists.
   streamMessageWithMapTools?(
     threadId: string,
     content: string,
+    ctx: import("./map-data/tools").ToolContext,
     model?: string,
     maxTokens?: number,
   ): AsyncGenerator<MapToolStreamChunk, void, unknown>;

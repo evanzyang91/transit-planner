@@ -1,14 +1,15 @@
+import { startObservation } from "@langfuse/tracing";
+import { tracingEnabled } from "./tracing";
 import "server-only";
 
 import type Anthropic from "@anthropic-ai/sdk";
 import {
-  mapTools,
-  WRITE_MAP_TOOLS,
-} from "./ai-map-tools";
-import {
-  handleReadTool,
-  validateWriteToolArgs,
-} from "./ai-map-tools.handlers";
+  MAP_TOOLS,
+  WRITE_TOOL_NAMES,
+  runReadTool,
+  resolveWriteTool,
+  type ToolContext,
+} from "./map-data/tools";
 
 export type MapToolStreamChunk =
   | { type: "text"; delta: string }
@@ -16,11 +17,25 @@ export type MapToolStreamChunk =
 
 type StoredMessage = Anthropic.Messages.MessageParam;
 
-const MAX_TOOL_LOOPS = 6;
+// Read → show flows take more steps than the old freehand drawing did
+// (rank_service_areas, then show_area per area), so allow a couple more loops.
+const MAX_TOOL_LOOPS = 8;
+
+const ANTHROPIC_MAP_TOOLS: Anthropic.Messages.Tool[] = MAP_TOOLS.map((t) => ({
+  name: t.name,
+  description: t.description,
+  input_schema: t.inputSchema as Anthropic.Messages.Tool["input_schema"],
+}));
 
 /**
  * Stream a map-assistant reply with Anthropic tool use.
- * query_network runs server-side; write tools are yielded to the client.
+ *
+ * READ tools run server-side against the live network + census raster and feed
+ * data back to the model. WRITE tools are *resolved* server-side
+ * (resolveWriteTool): geometry is validated/looked up, then either forwarded
+ * to the client as a tool_call event, or rejected — and the rejection reason
+ * goes back to the model as its tool_result so it can self-correct instead of
+ * believing it drew something.
  */
 export async function* streamMapToolResponse(
   client: Anthropic,
@@ -30,6 +45,8 @@ export async function* streamMapToolResponse(
     userMessage: string;
     model: string;
     maxTokens: number;
+    /** Per-request grounding context: live network + artifact store. */
+    ctx: ToolContext;
   },
 ): AsyncGenerator<MapToolStreamChunk, { assistantText: string; history: StoredMessage[] }> {
   let messages: StoredMessage[] = [
@@ -38,60 +55,56 @@ export async function* streamMapToolResponse(
   ];
   let assistantText = "";
 
+  // Langfuse trace root for one map-assistant turn. "agent" rather than a plain
+  // span: this is an autonomous tool-using loop, and that observation type is
+  // what drives Langfuse's Agent Graph. Children hang off this handle instead
+  // of OTel ambient context, which an async generator cannot keep current
+  // across its yields.
+  const turn = tracingEnabled
+    ? startObservation("map-assistant", { input: params.userMessage }, { asType: "agent" })
+    : null;
+
+  try {
   for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
+    const generation = turn?.startObservation(
+      `llm-call-${loop + 1}`,
+      {
+        model: params.model,
+        input: messages,
+        modelParameters: { max_tokens: params.maxTokens },
+      },
+      { asType: "generation" },
+    );
+
     const stream = client.messages.stream({
       model: params.model,
       max_tokens: params.maxTokens,
       system: params.system,
       messages,
-      tools: mapTools,
+      tools: ANTHROPIC_MAP_TOOLS,
       tool_choice: { type: "auto" },
     });
 
-    let blockType: "text" | "tool" | null = null;
-    let blockText = "";
-    let toolId = "";
-    let toolName = "";
-    let toolJson = "";
-
+    // Stream text deltas straight through; tool args are handled after the
+    // message completes (write resolution is async — land checks, road snap).
     for await (const event of stream) {
-      if (event.type === "content_block_start") {
-        if (event.content_block.type === "text") {
-          blockType = "text";
-          blockText = "";
-        } else if (event.content_block.type === "tool_use") {
-          blockType = "tool";
-          toolId = event.content_block.id;
-          toolName = event.content_block.name;
-          toolJson = "";
-        }
-      } else if (event.type === "content_block_delta") {
-        if (event.delta.type === "text_delta") {
-          blockText += event.delta.text;
-          assistantText += event.delta.text;
-          yield { type: "text", delta: event.delta.text };
-        } else if (event.delta.type === "input_json_delta") {
-          toolJson += event.delta.partial_json;
-        }
-      } else if (event.type === "content_block_stop" && blockType === "tool" && toolName) {
-        try {
-          const args = JSON.parse(toolJson || "{}") as Record<string, unknown>;
-          if (WRITE_MAP_TOOLS.has(toolName)) {
-            if (validateWriteToolArgs(toolName, args)) {
-              yield { type: "tool_call", name: toolName, args };
-            } else {
-              console.warn("[ai-map-tools] dropped invalid write tool:", toolName, args);
-            }
-          }
-        } catch (e) {
-          console.warn("[ai-map-tools] failed to parse tool JSON:", toolName, e);
-        }
-        blockType = null;
-        toolName = "";
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        assistantText += event.delta.text;
+        yield { type: "text", delta: event.delta.text };
       }
     }
 
     const final = await stream.finalMessage();
+
+    // usageDetails is what lets Langfuse compute cost for this call.
+    generation?.update({
+      output: final.content,
+      usageDetails: {
+        input: final.usage.input_tokens,
+        output: final.usage.output_tokens,
+      },
+    }).end();
+
     const toolUses = final.content.filter(
       (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
     );
@@ -102,24 +115,61 @@ export async function* streamMapToolResponse(
     }
 
     const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
+    let anyRejected = false;
+    let anyRead = false;
 
     for (const tu of toolUses) {
-      if (WRITE_MAP_TOOLS.has(tu.name)) {
-        // Write tools were already streamed to the client + rendered; just ack.
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: tu.id,
-          content: JSON.stringify({ status: "rendered_on_map" }),
-        });
+      const args = tu.input as Record<string, unknown>;
+
+      // One observation per tool call — this IS the "thought process": which
+      // tool ran, its arguments, and what came back. kind=write/read is carried
+      // as metadata so a trace can be filtered to just the map mutations.
+      const toolSpan = turn?.startObservation(
+        tu.name,
+        { input: args, metadata: { kind: WRITE_TOOL_NAMES.has(tu.name) ? "write" : "read" } },
+        { asType: "tool" },
+      );
+
+      if (WRITE_TOOL_NAMES.has(tu.name)) {
+        const resolution = await resolveWriteTool(tu.name, args, params.ctx);
+        if (resolution.status === "rendered") {
+          // The client receives the SERVER-resolved args (real polygons,
+          // snapped paths) — never the model's raw geometry.
+          yield { type: "tool_call", name: resolution.clientName, args: resolution.clientArgs };
+          // Log the SERVER-resolved args, not the model's raw geometry — that
+          // is what actually reached the map.
+          toolSpan?.update({
+            output: { status: "rendered_on_map", resolvedArgs: resolution.clientArgs },
+          }).end();
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: tu.id,
+            content: JSON.stringify({ status: "rendered_on_map" }),
+          });
+        } else {
+          anyRejected = true;
+          // A rejected write is the single most useful thing in these traces:
+          // it is the model proposing something the server refused.
+          toolSpan?.update({ output: { error: resolution.error }, level: "WARNING" }).end();
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: tu.id,
+            content: JSON.stringify({ error: resolution.error }),
+            is_error: true,
+          });
+        }
       } else {
-        // Read tools (query_network, describe_location, find_coverage_gaps):
-        // run server-side and feed the data back so the agent can act on it.
-        const result = handleReadTool(tu.name, tu.input as Record<string, unknown>);
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: tu.id,
-          content: JSON.stringify(result),
-        });
+        anyRead = true;
+        let resultJson: string;
+        try {
+          const result = await runReadTool(tu.name, args, params.ctx);
+          resultJson = JSON.stringify(result);
+          toolSpan?.update({ output: result }).end();
+        } catch (e) {
+          resultJson = JSON.stringify({ error: String(e) });
+          toolSpan?.update({ output: { error: String(e) }, level: "ERROR" }).end();
+        }
+        toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: resultJson });
       }
     }
 
@@ -129,13 +179,18 @@ export async function* streamMapToolResponse(
       { role: "user", content: toolResults },
     ];
 
-    if (toolResults.every((r) => {
-      const tu = toolUses.find((t) => t.id === r.tool_use_id);
-      return tu && WRITE_MAP_TOOLS.has(tu.name);
-    })) {
+    // Pure-write turn where everything rendered → the reply is complete; a
+    // rejection or any read result means the model needs another pass.
+    if (!anyRead && !anyRejected) {
       return { assistantText, history: messages };
     }
   }
 
   return { assistantText, history: messages };
+  } finally {
+    // finally, not a tail call. Every `return` above exits mid-loop, and a
+    // generator abandoned by its consumer (client disconnects mid-stream)
+    // resumes here via .return(). An unended span is never exported at all.
+    turn?.update({ output: assistantText }).end();
+  }
 }

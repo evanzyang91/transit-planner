@@ -106,3 +106,47 @@ IMPROVE SEO
 We need to make the ai more agentic. it needs to have better understanding of its environment and have more tools to always know the geospatial data; it should be able to actually plot lines which can serve as a better basis for the ai council. and it should be able to run the simulation and then understand whats weak, run the council, have a new network then test it again. it should be very observable as well.
 
 Generate renders with street view + nano banana
+
+## Extended thinking in the AI chat
+
+Not configured anywhere today. All five Anthropic call sites in `web/src/server/anthropic.ts`
+(lines 104, 144, 215, 275, 345) pass only model/max_tokens/system/messages — no `thinking`
+field, no `output_config`. The "thinking…" string in ChatPanel.tsx:362 is just a pending-state
+spinner label, not the API feature.
+
+Two things block it as-is:
+
+**Model.** `/api/ai/chat` defaults to `claude-haiku-4-5-20251001`. Haiku 4.5 predates adaptive
+thinking, so it only accepts the older fixed-budget form `thinking: {type: "enabled",
+budget_tokens: N}`. Adaptive thinking and the `output_config.effort` dial need 4.6+.
+council-graph.ts already uses `claude-sonnet-4-6` for the Sonnet agents — that half could take
+`{type: "adaptive"}`, but it has to be set explicitly (omitting `thinking` on 4.6 = no thinking).
+
+**max_tokens too small.** Chat defaults to 600, streamDirect to 1024. On the fixed-budget form
+`budget_tokens` has a 1024 minimum and must be strictly less than max_tokens — so at 600 there
+is no legal value, and 1024 leaves no room for a visible answer after the reasoning. Raising
+max_tokens is a prerequisite, not a tuning step.
+
+Also note the provider is pluggable (`getProvider()` in ai-provider.ts) and gemini.ts is a real
+second backend on `@google/generative-ai` with its own reasoning controls — "does chat think?"
+depends on which provider the request routes to, so this needs deciding per-surface, not globally.
+
+📖 Learn: adaptive thinking vs. budget_tokens — the older API made you pre-commit a fixed
+reasoning budget; 4.6+ lets the model decide per request, with output_config.effort as a coarse
+dial. Which era a model belongs to determines which config form you're stuck with.
+
+
+## Privacy — two open decisions (added 2026-08-31)
+
+Both are deliberately NOT in the privacy policy because neither is live. If
+either ships, update `web/src/app/privacy/page.tsx` in the same commit.
+
+- `trackUserSignIn` in `web/src/server/discord.ts` sends name + email to Discord.
+  Exported, zero callers. Delete it, or wire it up AND disclose it — Section 2
+  currently says profile data goes to the auth provider, not to Discord.
+- The 200-char chat preview (`trackChatMessage`, called from
+  `api/ai/chat/route.ts`) IS disclosed, but it lands in a channel a person reads
+  rather than a metrics dashboard. Decide if it should exist.
+
+Note: the `skip_tracking` localStorage opt-out covers Mixpanel and visit
+reporting only. Both flows above are server-side and ignore it.

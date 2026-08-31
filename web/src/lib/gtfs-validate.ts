@@ -246,8 +246,8 @@ export function validateGTFS(files: GTFSFiles): ValidationResult {
   if (zeroCoordsCount > 0) warn("W040", `${zeroCoordsCount} stop(s) have coordinates at (0, 0) — likely missing data`);
 
   // ── 8. Stop-time referential integrity & time format ─────────────────────────
-  const stUnknownTrip: Set<string> = new Set();
-  const stUnknownStop: Set<string> = new Set();
+  const stUnknownTrip = new Set<string>();
+  const stUnknownStop = new Set<string>();
   let badTimeCount = 0;
 
   for (const st of stRows) {

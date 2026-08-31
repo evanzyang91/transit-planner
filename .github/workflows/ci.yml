@@ -1,0 +1,52 @@
+name: CI
+
+# Runs on every PR, and on pushes to the long-lived branches. This is the gate
+# that says "this change didn't break anything" — build.yml only packages
+# images and never checks correctness.
+on:
+  pull_request:
+  push:
+    branches: [main, development, production]
+
+# A new push supersedes the previous run on the same branch/PR.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests & data validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `ci`, not `install`: installs exactly the lockfile and fails if
+      # package.json and package-lock.json have drifted apart.
+      - run: npm ci
+
+      # generated-routes.json is read through a cast, so TypeScript checks
+      # nothing about it. This is what catches a bad coordinate or a malformed
+      # route before it reaches the map.
+      - name: Validate route data
+        run: npm run validate:routes
+
+      # No secrets required: vitest.config.ts supplies dummy Supabase/Anthropic
+      # values and no test makes a network call.
+      #
+      # The github-actions reporter annotates the failing line directly in the
+      # PR diff instead of burying it in the log.
+      - name: Unit tests
+        working-directory: web
+        run: npx vitest run --reporter=default --reporter=github-actions
+
+  # NOT YET GATED: `npm run lint` and `npm run typecheck` currently report 130
+  # and 2 pre-existing failures respectively, none caused by any recent change
+  # (next.config.js sets ignoreDuringBuilds/ignoreBuildErrors, so they never
+  # blocked a build and accumulated). Adding them here today would paint every
+  # PR red for reasons the PR didn't cause, which teaches everyone to ignore the
+  # red X. Clear that backlog, then add them as steps above.

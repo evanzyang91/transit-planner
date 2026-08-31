@@ -7,6 +7,9 @@
   "scripts": {
     "dev": "npm --workspace web run dev",
     "build": "npm --workspace web run build",
+    "check": "npm --workspace web run check",
+    "test": "npm --workspace web run test",
+    "validate:routes": "npm --workspace web run validate:routes",
     "lint": "npm --workspace web run lint",
     "typecheck": "npm --workspace web run typecheck"
   },

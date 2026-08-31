@@ -95,12 +95,30 @@ feeds the revision loop — so each round is informed by data instead of re-roll
 | 4 | `sortRouteStops` always re-projected onto one axis → mangled L-shaped routes | Keep the projection order only when it produces a **shorter** path; else preserve the planner's order | `sortRouteStops` in [council-graph.ts](web/src/server/council-graph.ts) |
 | 5 | Commission received stop **names only** → re-hallucinated coordinates | Commission prompt now includes exact-coordinate JSON + the simulated outcome | `commissionNode` in [council-graph.ts](web/src/server/council-graph.ts) |
 
+## 2026-07 rearchitecture (grounded tool registry)
+
+The council now draws its tools from the **shared map-data registry**
+([web/src/server/map-data/tools.ts](web/src/server/map-data/tools.ts)) — the same
+data layer the Ask-AI map assistant uses, so the council and the UI can no longer
+disagree on a number:
+
+- Planner grounding (#1) uses `find_coverage_gaps` (census-raster gap engine),
+  `query_population` (successor of `query_demand`), and `estimate_ridership`
+  (shared gravity model in [web/src/lib/ridership-model.ts](web/src/lib/ridership-model.ts)).
+- The brief's demand section is now **server-computed** (`buildDataBrief`):
+  catalogued neighbourhoods get real centroids + census population, named
+  stations get their actual coordinates; unresolvable targets are flagged.
+- **Critics are grounded too**: nimby/pr get a `describe_location` /
+  `query_population` phase with the exact stop coordinates before critiquing.
+- **Commission approval is deterministic**: on approve, the debated route is
+  adopted as-is (`repairRoute` only) — the model no longer re-types coordinates
+  through `propose_route`. Only reject-at-max-revisions still finalizes via the model.
+- **Gemini parity**: `streamMessageWithReadTools` + `streamMessageWithMapTools`
+  are implemented for Gemini function calling, so grounding no longer skips there.
+
 ## Caveats / not-yet-verified
 
-- The agentic `query_demand` loop (#1) is wired on the **Anthropic** provider (the default).
-  Gemini has no tool-use loop, so it gracefully **skips** grounding (guarded by
-  `if (provider.streamMessageWithReadTools)`) — no worse than before, but not improved.
-- Needs a **live run** to confirm: `query_demand` loop latency is acceptable, and a full
+- Needs a **live run** to confirm: grounding-loop latency is acceptable, and a full
   2-revision run doesn't trip LangGraph's `recursionLimit` (bumped 20 → 40 for the extra `sim` node).
-- Requires API keys + Supabase (`pop_data`) + the Python ridership server for the full pipeline.
+- Requires API keys + Supabase (`pop_data`) for the full pipeline.
 ```
