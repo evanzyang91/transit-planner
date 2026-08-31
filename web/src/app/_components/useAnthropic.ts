@@ -14,6 +14,10 @@ export type AnthropicMessage = {
   content: string;
   turnId?: string;
   annotationIds?: string[];
+  // True on the first assistant reply after the server lost our session and
+  // opened a fresh thread. The reply itself is fine — but everything said
+  // before it is gone from the model's view, so the UI flags the break.
+  contextReset?: boolean;
 };
 
 export type AnthropicState = {
@@ -162,6 +166,7 @@ export function useAnthropic(
         let assistantMessage = "";
         let newAssistantId = state.assistantId;
         let newThreadId = state.threadId;
+        let contextReset = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -179,7 +184,12 @@ export function useAnthropic(
 
             try {
               const parsed = JSON.parse(data) as
-                | { type: "metadata"; assistantId: string; threadId: string }
+                | {
+                    type: "metadata";
+                    assistantId: string;
+                    threadId: string;
+                    contextReset?: boolean;
+                  }
                 | { type: "content"; text: string }
                 | { type: "text"; delta: string }
                 | { type: "tool_call"; name: string; args: Record<string, unknown> }
@@ -188,6 +198,7 @@ export function useAnthropic(
               if (parsed.type === "metadata") {
                 newAssistantId = parsed.assistantId;
                 newThreadId = parsed.threadId;
+                contextReset = parsed.contextReset ?? false;
               } else if (parsed.type === "content") {
                 assistantMessage += parsed.text;
                 sendOptions?.onChunk?.(parsed.text);
@@ -225,6 +236,8 @@ export function useAnthropic(
               content: assistantMessage,
               turnId,
               annotationIds: annotationIds.length > 0 ? annotationIds : undefined,
+              // Only set when true, so existing persisted messages stay unchanged.
+              contextReset: contextReset || undefined,
             },
           ],
           isLoading: false,
