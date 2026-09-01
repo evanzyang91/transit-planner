@@ -21,6 +21,21 @@ type StoredMessage = Anthropic.Messages.MessageParam;
 // (rank_service_areas, then show_area per area), so allow a couple more loops.
 const MAX_TOOL_LOOPS = 8;
 
+// The closing reply only has to describe what was just drawn, so it gets a
+// tighter budget than a full turn — this caps the cost of the extra call.
+const CLOSING_MAX_TOKENS = 300;
+
+// The main prompt carries "anything you mention you MUST draw in the SAME
+// reply — if you didn't draw it, don't say it". On the closing call there are
+// no tools to draw with, so that rule would gag the model and reproduce the
+// very silence this call exists to fix. Lift it for this one call: the drawing
+// already happened, and describing it is the entire job.
+const CLOSING_DIRECTIVE = `The map actions above have ALREADY been drawn successfully and the user can see them.
+
+You have no tools for this reply — do not attempt to draw anything else. The "only say what you drew" rule is already satisfied, because everything referenced above was drawn.
+
+In 1-3 short sentences, tell the user what you just put on the map and what it shows. Answer the question they actually asked.`;
+
 const ANTHROPIC_MAP_TOOLS: Anthropic.Messages.Tool[] = MAP_TOOLS.map((t) => ({
   name: t.name,
   description: t.description,
@@ -179,9 +194,55 @@ export async function* streamMapToolResponse(
       { role: "user", content: toolResults },
     ];
 
-    // Pure-write turn where everything rendered → the reply is complete; a
-    // rejection or any read result means the model needs another pass.
+    // Pure-write turn where everything rendered. This used to return straight
+    // away, which cut the reply off mid-thought: the model would say "let me
+    // circle Rosedale:", draw the circle, and never get to say what it drew.
+    //
+    // So make ONE closing call instead. tool_choice "none" is what makes that
+    // safe — the model sees the tool results and can only answer in words, so
+    // it physically cannot start another drawing spree, which is the failure
+    // the old early return was guarding against. The tools stay declared
+    // because the history contains tool_use blocks and the API validates them
+    // against the declared set; dropping `tools` here would 400.
+    // 📖 Learn: Anthropic tool_choice — "auto" lets the model decide whether to
+    // call a tool, "none" forbids calling while keeping the definitions in scope.
     if (!anyRead && !anyRejected) {
+      const closing = turn?.startObservation(
+        "closing-summary",
+        {
+          model: params.model,
+          input: messages,
+          modelParameters: { max_tokens: CLOSING_MAX_TOKENS },
+        },
+        { asType: "generation" },
+      );
+
+      const closingStream = client.messages.stream({
+        model: params.model,
+        max_tokens: CLOSING_MAX_TOKENS,
+        system: `${params.system}\n\n${CLOSING_DIRECTIVE}`,
+        messages,
+        tools: ANTHROPIC_MAP_TOOLS,
+        tool_choice: { type: "none" },
+      });
+
+      for await (const event of closingStream) {
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          assistantText += event.delta.text;
+          yield { type: "text", delta: event.delta.text };
+        }
+      }
+
+      const closingFinal = await closingStream.finalMessage();
+      closing?.update({
+        output: closingFinal.content,
+        usageDetails: {
+          input: closingFinal.usage.input_tokens,
+          output: closingFinal.usage.output_tokens,
+        },
+      }).end();
+
+      messages = [...messages, { role: "assistant", content: closingFinal.content }];
       return { assistantText, history: messages };
     }
   }
