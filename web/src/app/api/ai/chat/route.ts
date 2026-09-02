@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       networkRoutes,
     } = body;
 
-    void trackChatMessage({ message, model });
+    void trackChatMessage(request.headers.get("host"), { message, model });
 
     if (!message) {
       return new Response(JSON.stringify({ error: "message is required" }), {

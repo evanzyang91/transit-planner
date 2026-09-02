@@ -1,4 +1,5 @@
 import { env } from "~/env.js";
+import { isStagingHost } from "~/server/is-staging-host";
 
 type DiscordColor =
   | "green"
@@ -32,9 +33,16 @@ interface DiscordEmbed {
   timestamp?: string;
 }
 
-async function sendWebhook(embeds: DiscordEmbed[]): Promise<void> {
+// `host` is the requesting browser's Host header, passed in explicitly by
+// each caller (see trackChatMessage etc. below) rather than looked up here,
+// so it's obvious at every call site where the value comes from.
+async function sendWebhook(
+  host: string | null,
+  embeds: DiscordEmbed[],
+): Promise<void> {
   const url = env.DISCORD_WEBHOOK_URL;
   if (!url) return;
+  if (isStagingHost(host)) return;
   if (env.NODE_ENV !== "production") return;
 
   try {
@@ -48,15 +56,18 @@ async function sendWebhook(embeds: DiscordEmbed[]): Promise<void> {
   }
 }
 
-export async function trackUserSignIn(user: {
-  name?: string | null;
-  email?: string | null;
-  isNew?: boolean;
-}): Promise<void> {
+export async function trackUserSignIn(
+  host: string | null,
+  user: {
+    name?: string | null;
+    email?: string | null;
+    isNew?: boolean;
+  },
+): Promise<void> {
   const color: DiscordColor = user.isNew ? "green" : "blue";
   const title = user.isNew ? "New User Signed Up" : "User Signed In";
 
-  await sendWebhook([
+  await sendWebhook(host, [
     {
       title,
       color: COLOR_MAP[color],
@@ -69,12 +80,15 @@ export async function trackUserSignIn(user: {
   ]);
 }
 
-export async function trackCouncilRequest(opts: {
-  neighbourhoods: string[];
-  lineType?: string | null;
-  stationCount: number;
-}): Promise<void> {
-  await sendWebhook([
+export async function trackCouncilRequest(
+  host: string | null,
+  opts: {
+    neighbourhoods: string[];
+    lineType?: string | null;
+    stationCount: number;
+  },
+): Promise<void> {
+  await sendWebhook(host, [
     {
       title: "Council Planning Request",
       color: COLOR_MAP.purple,
@@ -105,16 +119,19 @@ export async function trackCouncilRequest(opts: {
   ]);
 }
 
-export async function trackChatMessage(opts: {
-  message: string;
-  model?: string;
-}): Promise<void> {
+export async function trackChatMessage(
+  host: string | null,
+  opts: {
+    message: string;
+    model?: string;
+  },
+): Promise<void> {
   const preview =
     opts.message.length > 200
       ? opts.message.slice(0, 200) + "…"
       : opts.message;
 
-  await sendWebhook([
+  await sendWebhook(host, [
     {
       title: "Chat Message",
       color: COLOR_MAP.gray,

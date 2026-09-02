@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { env } from "~/env.js";
+import { isStagingHost } from "~/server/is-staging-host";
 
 export async function POST(req: Request) {
+  // This route had no staging check at all before — feedback and bug reports
+  // submitted from test.<domain> were going straight to Discord. Same fix as
+  // /api/track: check the real request Host header, not NODE_ENV.
+  if (isStagingHost(req.headers.get("host"))) {
+    return NextResponse.json({ ok: true });
+  }
+
   let body: { message?: unknown; category?: unknown; name?: unknown } = {};
   try {
     body = (await req.json()) as typeof body;

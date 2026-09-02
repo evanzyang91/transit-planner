@@ -19,7 +19,7 @@ interface CouncilRequestBody {
 export async function POST(req: NextRequest) {
   const body = await req.json() as CouncilRequestBody;
 
-  void trackCouncilRequest({
+  void trackCouncilRequest(req.headers.get("host"), {
     neighbourhoods: body.neighbourhoods ?? [],
     lineType: body.line_type,
     stationCount: body.stations?.length ?? 0,

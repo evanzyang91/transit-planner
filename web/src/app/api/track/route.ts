@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { env } from "~/env.js";
+import { isStagingHost } from "~/server/is-staging-host";
 
 type VisitWebhookType = "regular_visit" | "referral_visit";
 
@@ -30,6 +31,14 @@ function getVisitWebhookType(opts: {
 // 📖 Learn: Next.js Route Handlers — https://nextjs.org/docs/app/building-your-application/routing/route-handlers
 
 export async function POST(req: NextRequest) {
+  // The client already skips calling this route on test.<domain> (see
+  // ~/lib/track.ts), but that's a browser-side check anyone could bypass by
+  // hitting this endpoint directly. Re-check here using the actual request's
+  // Host header so staging traffic can never reach Discord, full stop.
+  if (isStagingHost(req.headers.get("host"))) {
+    return new Response(null, { status: 204 });
+  }
+
   const {
     event,
     meta = {},
