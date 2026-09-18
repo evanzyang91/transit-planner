@@ -1,0 +1,4599 @@
+{
+  "$comment": "Recorded output of the LIVE council for the golden selections, scored by src/server/route-metrics.ts. This is the baseline a deterministic route builder has to beat - regenerate with scripts/eval-routes.mjs, re-score without re-running the model with --recompute.",
+  "recordedAt": "2026-09-18T14:03:04.428Z",
+  "base": "http://localhost:3000",
+  "walkKm": 0.8,
+  "existingStopCount": 548,
+  "censusBlockCount": 13341,
+  "runs": [
+    {
+      "selectionId": "collinear-yonge-north",
+      "shape": "collinear",
+      "areaCount": 6,
+      "areaNames": [
+        "Yonge-Eglinton",
+        "Lawrence Park South",
+        "Lawrence Park North",
+        "Bedford Park-Nortown",
+        "Lansing-Westgate",
+        "Willowdale West"
+      ],
+      "durationS": 339.8,
+      "throughPathKm": 5.949336623137406,
+      "repairs": [
+        "Auto-repaired Alex Chen's route: merged duplicate Yonge & Eglinton (Midtown Hub); relabelled Yonge & Lawrence Park South (Manor Rd) → Summerhill Transfer; relabelled Yonge & Lawrence Park North (Lawrence Ave) → Lawrence Transfer; relabelled Lansing-Westgate (Yonge & Sheppard) → Sheppard–Yonge Transfer; relabelled Willowdale West (Yonge & Cummer) → Sheppard–Yonge Transfer.",
+        "Auto-repaired Jordan Park's route: relabelled Yonge & Eglinton (Midtown Hub) → Eglinton Transfer; relabelled Lawrence Park North – Yonge & Lawrence → Lawrence Transfer; relabelled Lansing-Westgate – Yonge & Sheppard → Sheppard–Yonge Transfer; relabelled Willowdale West – Yonge & Cummer → Sheppard–Yonge Transfer.",
+        "Auto-repaired Jordan Park's route: relabelled Bedford Park – Avenue & Lawrence Ave W → York Mills Transfer; relabelled Lansing-Westgate – Avenue & Sheppard → Sheppard–Yonge Transfer."
+      ],
+      "routes": [
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Yonge North Relief Line",
+            "type": "subway",
+            "color": "#dc2626",
+            "stops": [
+              {
+                "name": "Summerhill Transfer",
+                "coords": [
+                  -79.3933,
+                  43.6881
+                ]
+              },
+              {
+                "name": "Eglinton Transfer",
+                "coords": [
+                  -79.3988,
+                  43.7064
+                ]
+              },
+              {
+                "name": "Bedford Park (Avenue Rd & Lawrence)",
+                "coords": [
+                  -79.4087,
+                  43.7153
+                ]
+              },
+              {
+                "name": "Lawrence Transfer",
+                "coords": [
+                  -79.4024,
+                  43.7259
+                ]
+              },
+              {
+                "name": "Sheppard–Yonge Transfer",
+                "coords": [
+                  -79.4108,
+                  43.761
+                ]
+              },
+              {
+                "name": "Sheppard–Yonge Transfer",
+                "coords": [
+                  -79.4125,
+                  43.7679
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 6,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 9.375156302713163,
+              "straightLineKm": 9.006474150437947,
+              "sinuosity": 1.0409352368215357,
+              "turnAnglesDeg": [
+                26.655347471573243,
+                62.38717704947314,
+                33.27361381536686,
+                0.2855221425752175
+              ],
+              "maxTurnDeg": 62.38717704947314,
+              "sharpTurns": 1,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                2.0823534360744977,
+                1.2698610168136588,
+                1.282800947957798,
+                3.960845303061016,
+                0.7792955988061928
+              ],
+              "spacingViolations": {
+                "tooClose": 1,
+                "tooFar": 2
+              }
+            },
+            "coverage": {
+              "servedPop": 116776,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 109737,
+              "netNewPop": 7039,
+              "areaCoverage": [
+                {
+                  "name": "Yonge-Eglinton",
+                  "population": 12424,
+                  "servedPopulation": 10725,
+                  "share": 0.8632485511912428
+                },
+                {
+                  "name": "Lawrence Park South",
+                  "population": 15018,
+                  "servedPopulation": 10897,
+                  "share": 0.7255959515248369
+                },
+                {
+                  "name": "Lawrence Park North",
+                  "population": 14735,
+                  "servedPopulation": 8607,
+                  "share": 0.5841194435018663
+                },
+                {
+                  "name": "Bedford Park-Nortown",
+                  "population": 22376,
+                  "servedPopulation": 398,
+                  "share": 0.01778691455130497
+                },
+                {
+                  "name": "Lansing-Westgate",
+                  "population": 15980,
+                  "servedPopulation": 7839,
+                  "share": 0.49055068836045057
+                },
+                {
+                  "name": "Willowdale West",
+                  "population": 17210,
+                  "servedPopulation": 5938,
+                  "share": 0.34503195816385823
+                }
+              ],
+              "minAreaCoverage": 0.01778691455130497
+            },
+            "cost": {
+              "costBn": 5.587578151356581,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 5.949336623137406,
+              "detourIndex": 1.5758322140072716
+            },
+            "efficiency": {
+              "netNewPopPerBn": 1259.758666335796,
+              "servedPopPerKm": 12455.898998313778
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 62.4° exceeds 60°",
+              "3 stop gap(s) outside 0.8–1.5 km",
+              "Bedford Park-Nortown only 2% covered",
+              "detour index 1.58 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "Yonge North Relief – Lawrence to Willowdale",
+            "type": "subway",
+            "color": "#dc2626",
+            "stops": [
+              {
+                "name": "Eglinton Transfer",
+                "coords": [
+                  -79.3988,
+                  43.7064
+                ]
+              },
+              {
+                "name": "Eglinton Transfer",
+                "coords": [
+                  -79.3965,
+                  43.7085
+                ]
+              },
+              {
+                "name": "Lawrence Park South – Yonge & Blythwood",
+                "coords": [
+                  -79.3933,
+                  43.7181
+                ]
+              },
+              {
+                "name": "Lawrence Transfer",
+                "coords": [
+                  -79.4024,
+                  43.7259
+                ]
+              },
+              {
+                "name": "Bedford Park – Yonge & Woburn",
+                "coords": [
+                  -79.4003,
+                  43.7338
+                ]
+              },
+              {
+                "name": "Sheppard–Yonge Transfer",
+                "coords": [
+                  -79.4108,
+                  43.761
+                ]
+              },
+              {
+                "name": "Sheppard–Yonge Transfer",
+                "coords": [
+                  -79.4125,
+                  43.7679
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 7,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 7.344017664718963,
+              "straightLineKm": 6.926498333369637,
+              "sinuosity": 1.060278557974648,
+              "turnAnglesDeg": [
+                24.923253385938292,
+                53.97363598884132,
+                51.286483015337026,
+                26.64390125300775,
+                5.527285460691918
+              ],
+              "maxTurnDeg": 53.97363598884132,
+              "sharpTurns": 0,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                0.29783427661913076,
+                1.0980175768996436,
+                1.1344688733506691,
+                0.8944989476866496,
+                3.139902391356677,
+                0.7792955988061928
+              ],
+              "spacingViolations": {
+                "tooClose": 2,
+                "tooFar": 1
+              }
+            },
+            "coverage": {
+              "servedPop": 105844,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 97646,
+              "netNewPop": 8198,
+              "areaCoverage": [
+                {
+                  "name": "Yonge-Eglinton",
+                  "population": 12424,
+                  "servedPopulation": 9993,
+                  "share": 0.8043303283966516
+                },
+                {
+                  "name": "Lawrence Park South",
+                  "population": 15018,
+                  "servedPopulation": 6104,
+                  "share": 0.40644559861499535
+                },
+                {
+                  "name": "Lawrence Park North",
+                  "population": 14735,
+                  "servedPopulation": 10748,
+                  "share": 0.7294197488971835
+                },
+                {
+                  "name": "Bedford Park-Nortown",
+                  "population": 22376,
+                  "servedPopulation": 1074,
+                  "share": 0.047997854844476225
+                },
+                {
+                  "name": "Lansing-Westgate",
+                  "population": 15980,
+                  "servedPopulation": 7839,
+                  "share": 0.49055068836045057
+                },
+                {
+                  "name": "Willowdale West",
+                  "population": 17210,
+                  "servedPopulation": 5938,
+                  "share": 0.34503195816385823
+                }
+              ],
+              "minAreaCoverage": 0.047997854844476225
+            },
+            "cost": {
+              "costBn": 4.7220088323594815,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 5.949336623137406,
+              "detourIndex": 1.2344263116928935
+            },
+            "efficiency": {
+              "netNewPopPerBn": 1736.1255116296857,
+              "servedPopPerKm": 14412.274701963204
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "3 stop gap(s) outside 0.8–1.5 km",
+              "Bedford Park-Nortown only 5% covered"
+            ]
+          }
+        },
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Avenue Road North Relief Subway",
+            "type": "subway",
+            "color": "#7c3aed",
+            "stops": [
+              {
+                "name": "Eglinton Transfer",
+                "coords": [
+                  -79.3988,
+                  43.7064
+                ]
+              },
+              {
+                "name": "Lawrence Park South – Avenue & Blythwood",
+                "coords": [
+                  -79.4244,
+                  43.7121
+                ]
+              },
+              {
+                "name": "Lawrence Park North – Bathurst & Lawrence",
+                "coords": [
+                  -79.4319,
+                  43.7215
+                ]
+              },
+              {
+                "name": "Bedford Park – Avenue & Wilson",
+                "coords": [
+                  -79.4244,
+                  43.7398
+                ]
+              },
+              {
+                "name": "Lansing-Westgate – Senlac & Sheppard",
+                "coords": [
+                  -79.4319,
+                  43.7527
+                ]
+              },
+              {
+                "name": "Sheppard–Yonge Transfer",
+                "coords": [
+                  -79.4108,
+                  43.761
+                ]
+              },
+              {
+                "name": "Finch Transfer",
+                "coords": [
+                  -79.4155,
+                  43.7805
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 7,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 11.16821809416364,
+              "straightLineKm": 8.348043286293942,
+              "sinuosity": 1.3378246507777387,
+              "turnAnglesDeg": [
+                42.845613472016474,
+                46.754584860665034,
+                39.54609196665511,
+                84.5473260904126,
+                71.56102604253141
+              ],
+              "maxTurnDeg": 84.5473260904126,
+              "sharpTurns": 2,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                2.1530761969743057,
+                1.2065769492074752,
+                2.1222237720849524,
+                1.5557973288131335,
+                1.9296459952825646,
+                2.200897851801208
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 5
+              }
+            },
+            "coverage": {
+              "servedPop": 129249,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 100490,
+              "netNewPop": 28759,
+              "areaCoverage": [
+                {
+                  "name": "Yonge-Eglinton",
+                  "population": 12424,
+                  "servedPopulation": 9993,
+                  "share": 0.8043303283966516
+                },
+                {
+                  "name": "Lawrence Park South",
+                  "population": 15018,
+                  "servedPopulation": 1114,
+                  "share": 0.07417765348248768
+                },
+                {
+                  "name": "Lawrence Park North",
+                  "population": 14735,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Bedford Park-Nortown",
+                  "population": 22376,
+                  "servedPopulation": 11843,
+                  "share": 0.5292724347515195
+                },
+                {
+                  "name": "Lansing-Westgate",
+                  "population": 15980,
+                  "servedPopulation": 11825,
+                  "share": 0.7399874843554443
+                },
+                {
+                  "name": "Willowdale West",
+                  "population": 17210,
+                  "servedPopulation": 6127,
+                  "share": 0.35601394538059267
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 6.63410904708182,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 5.949336623137406,
+              "detourIndex": 1.8772207393223677
+            },
+            "efficiency": {
+              "netNewPopPerBn": 4335.020693193213,
+              "servedPopPerKm": 11572.92944230233
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 84.5° exceeds 60°",
+              "5 stop gap(s) outside 0.8–1.5 km",
+              "Lawrence Park North only 0% covered",
+              "detour index 1.88 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "Avenue Road North Relief Line",
+            "type": "subway",
+            "color": "#7c3aed",
+            "stops": [
+              {
+                "name": "Eglinton Transfer",
+                "coords": [
+                  -79.3988,
+                  43.7064
+                ]
+              },
+              {
+                "name": "Lawrence Park South – Avenue & Chatsworth",
+                "coords": [
+                  -79.4031,
+                  43.7185
+                ]
+              },
+              {
+                "name": "Lawrence Transfer",
+                "coords": [
+                  -79.4024,
+                  43.7259
+                ]
+              },
+              {
+                "name": "York Mills Transfer",
+                "coords": [
+                  -79.4075,
+                  43.7385
+                ]
+              },
+              {
+                "name": "Sheppard–Yonge Transfer",
+                "coords": [
+                  -79.4138,
+                  43.7545
+                ]
+              },
+              {
+                "name": "Willowdale West – Beecroft & Churchill",
+                "coords": [
+                  -79.4198,
+                  43.773
+                ]
+              },
+              {
+                "name": "Finch Transfer",
+                "coords": [
+                  -79.4155,
+                  43.7805
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 7,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 8.53872133228345,
+              "straightLineKm": 8.348043286293942,
+              "sinuosity": 1.0228410466321574,
+              "turnAnglesDeg": [
+                18.44064855211852,
+                20.353783612551787,
+                0.4234618767582159,
+                2.709742336287269,
+                35.932632802512515
+              ],
+              "maxTurnDeg": 35.932632802512515,
+              "sharpTurns": 0,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.389137382286959,
+                0.8247630185215599,
+                1.4597498814973593,
+                1.849693592333576,
+                2.112781198705456,
+                0.9025962589385389
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 2
+              }
+            },
+            "coverage": {
+              "servedPop": 115813,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 102331,
+              "netNewPop": 13482,
+              "areaCoverage": [
+                {
+                  "name": "Yonge-Eglinton",
+                  "population": 12424,
+                  "servedPopulation": 9993,
+                  "share": 0.8043303283966516
+                },
+                {
+                  "name": "Lawrence Park South",
+                  "population": 15018,
+                  "servedPopulation": 9306,
+                  "share": 0.6196564123052337
+                },
+                {
+                  "name": "Lawrence Park North",
+                  "population": 14735,
+                  "servedPopulation": 10378,
+                  "share": 0.7043094672548355
+                },
+                {
+                  "name": "Bedford Park-Nortown",
+                  "population": 22376,
+                  "servedPopulation": 3275,
+                  "share": 0.1463621737575974
+                },
+                {
+                  "name": "Lansing-Westgate",
+                  "population": 15980,
+                  "servedPopulation": 5728,
+                  "share": 0.3584480600750939
+                },
+                {
+                  "name": "Willowdale West",
+                  "population": 17210,
+                  "servedPopulation": 12586,
+                  "share": 0.7313190005810575
+                }
+              ],
+              "minAreaCoverage": 0.1463621737575974
+            },
+            "cost": {
+              "costBn": 5.3193606661417245,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 5.949336623137406,
+              "detourIndex": 1.435239233072766
+            },
+            "efficiency": {
+              "netNewPopPerBn": 2534.5151130312165,
+              "servedPopPerKm": 13563.272004454671
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "2 stop gap(s) outside 0.8–1.5 km",
+              "Bedford Park-Nortown only 15% covered",
+              "detour index 1.44 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Bathurst–Allen North Relief Subway",
+            "type": "subway",
+            "color": "#7c3aed",
+            "stops": [
+              {
+                "name": "Chaplin Transfer",
+                "coords": [
+                  -79.4171,
+                  43.7029
+                ]
+              },
+              {
+                "name": "Lawrence Park South – Bathurst & Chatsworth",
+                "coords": [
+                  -79.4319,
+                  43.7219
+                ]
+              },
+              {
+                "name": "Bedford Park – Bathurst & Lawrence",
+                "coords": [
+                  -79.4319,
+                  43.7399
+                ]
+              },
+              {
+                "name": "Lansing-Westgate – Bathurst & Sheppard",
+                "coords": [
+                  -79.4319,
+                  43.76
+                ]
+              },
+              {
+                "name": "Westminster-Branson South – Bathurst & Senlac",
+                "coords": [
+                  -79.4535,
+                  43.7707
+                ]
+              },
+              {
+                "name": "Westminster-Branson North – Wilmington & Sheppard",
+                "coords": [
+                  -79.444,
+                  43.7918
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 6,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 11.231527540929108,
+              "straightLineKm": 10.118634375840667,
+              "sinuosity": 1.1099845219969202,
+              "turnAnglesDeg": [
+                29.551187284161102,
+                0,
+                55.76083719794512,
+                73.90494176489848
+              ],
+              "maxTurnDeg": 73.90494176489848,
+              "sharpTurns": 1,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                2.4245614395757387,
+                2.001508679602133,
+                2.235018025555557,
+                2.103379671129561,
+                2.467059725066118
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 5
+              }
+            },
+            "coverage": {
+              "servedPop": 68999,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 14949,
+              "netNewPop": 54050,
+              "areaCoverage": [
+                {
+                  "name": "Yonge-Eglinton",
+                  "population": 12424,
+                  "servedPopulation": 489,
+                  "share": 0.039359304571796525
+                },
+                {
+                  "name": "Lawrence Park South",
+                  "population": 15018,
+                  "servedPopulation": 2335,
+                  "share": 0.15548009055799708
+                },
+                {
+                  "name": "Lawrence Park North",
+                  "population": 14735,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Bedford Park-Nortown",
+                  "population": 22376,
+                  "servedPopulation": 7221,
+                  "share": 0.32271183410797283
+                },
+                {
+                  "name": "Lansing-Westgate",
+                  "population": 15980,
+                  "servedPopulation": 3879,
+                  "share": 0.24274092615769713
+                },
+                {
+                  "name": "Willowdale West",
+                  "population": 17210,
+                  "servedPopulation": 1095,
+                  "share": 0.06362579895409645
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 6.515763770464554,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 5.949336623137406,
+              "detourIndex": 1.887862168909534
+            },
+            "efficiency": {
+              "netNewPopPerBn": 8295.266971618033,
+              "servedPopPerKm": 6143.33177286517
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 73.9° exceeds 60°",
+              "5 stop gap(s) outside 0.8–1.5 km",
+              "Lawrence Park North only 0% covered",
+              "detour index 1.89 exceeds 1.3"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "selectionId": "collinear-bloor-danforth",
+      "shape": "collinear",
+      "areaCount": 6,
+      "areaNames": [
+        "Runnymede-Bloor West Village",
+        "High Park North",
+        "Dufferin Grove",
+        "Palmerston-Little Italy",
+        "Kensington-Chinatown",
+        "Moss Park"
+      ],
+      "durationS": 338.18,
+      "throughPathKm": 9.005315078019102,
+      "repairs": [
+        "Auto-repaired Alex Chen's route: relabelled High Park North (Annette & Runnymede) → St Clair Ave West / Old Stock Yards Rd Transfer; relabelled Palmerston-Little Italy (College & Bathurst) → Dupont Transfer; relabelled Kensington-Chinatown (Spadina & Dundas) → Queen St West / Augusta Ave Transfer; relabelled Moss Park (Queen & Jarvis) → King Transfer.",
+        "Auto-repaired Jordan Park's route: relabelled Palmerston–Little Italy (College St / Bathurst St) → Queen St West / Niagara St Transfer; relabelled Kensington–Chinatown (Dundas St W / Spadina Ave) → Queen St West / Bathurst St Transfer; relabelled Moss Park (Queen St E / Jarvis St) → King Transfer.",
+        "Auto-repaired Alex Chen's route: relabelled Little Italy (College & Bathurst) → Christie Transfer; relabelled Kensington (Spadina & Dundas) → Queen St West / Augusta Ave Transfer; relabelled Moss Park (Jarvis & Dundas) → Queen Transfer; relabelled Corktown (Parliament & Queen) → Queen St East / Sherbourne St Transfer.",
+        "Auto-repaired Jordan Park's route: relabelled High Park North (Dundas St W / Clendenan Ave) → High Park Transfer; relabelled Dufferin Grove (Dundas St W / Dufferin St) → Roncesvalles Ave / Boustead Ave Transfer; relabelled Palmerston–Little Italy (College St / Ossington Ave) → Dufferin Transfer; relabelled Kensington–Chinatown (College St / Bathurst St) → Dundas St West / Grace St Transfer; relabelled Moss Park (Queen St / Church St) → King Transfer.",
+        "Auto-repaired Alex Chen's route: relabelled Ossington & College (Palmerston–Little Italy) → Ossington Transfer; relabelled Spadina & Dundas (Kensington–Chinatown) → Queen St West / Augusta Ave Transfer; relabelled Jarvis & Dundas (Moss Park) → King Transfer; relabelled Parliament & Queen (Cabbagetown) → Queen St East / Sherbourne St Transfer.",
+        "Auto-repaired Jordan Park's route: relabelled Runnymede-Bloor West Village (Annette St / Runnymede Rd) → Runnymede Transfer; relabelled High Park North (Dundas St W / Clendenan Ave) → High Park Transfer; relabelled Dufferin Grove (Dundas St W / Ossington Ave) → Queen St West / Dunn Ave Transfer; relabelled Palmerston-Little Italy (Dundas St W / Bathurst St) → Queen St West / Shaw St Transfer; relabelled Kensington-Chinatown (Dundas St W / Spadina Ave) → Queen's Park Transfer."
+      ],
+      "routes": [
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "West Toronto Crosstown",
+            "type": "subway",
+            "color": "#e05c1a",
+            "stops": [
+              {
+                "name": "Runnymede Transfer",
+                "coords": [
+                  -79.4758,
+                  43.6519
+                ]
+              },
+              {
+                "name": "St Clair Ave West / Old Stock Yards Rd Transfer",
+                "coords": [
+                  -79.4678,
+                  43.665
+                ]
+              },
+              {
+                "name": "Dufferin Grove (Bloor & Dufferin)",
+                "coords": [
+                  -79.4347,
+                  43.67
+                ]
+              },
+              {
+                "name": "Dupont Transfer",
+                "coords": [
+                  -79.4114,
+                  43.675
+                ]
+              },
+              {
+                "name": "Queen St West / Augusta Ave Transfer",
+                "coords": [
+                  -79.4005,
+                  43.654
+                ]
+              },
+              {
+                "name": "King Transfer",
+                "coords": [
+                  -79.371,
+                  43.6525
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 6,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 11.14045546033719,
+              "straightLineKm": 8.431878368174777,
+              "sinuosity": 1.3212305697370645,
+              "turnAnglesDeg": [
+                54.31079847861586,
+                4.702473233287504,
+                85.73136311446024,
+                65.30792520237104
+              ],
+              "maxTurnDeg": 85.73136311446024,
+              "sharpTurns": 2,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.592488294658965,
+                2.7197921556678524,
+                1.9546880480836881,
+                2.4942717958373395,
+                2.379215166089345
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 5
+              }
+            },
+            "coverage": {
+              "servedPop": 115752,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 103548,
+              "netNewPop": 12204,
+              "areaCoverage": [
+                {
+                  "name": "Runnymede-Bloor West Village",
+                  "population": 10129,
+                  "servedPopulation": 3006,
+                  "share": 0.2967716457695725
+                },
+                {
+                  "name": "High Park North",
+                  "population": 22162,
+                  "servedPopulation": 7141,
+                  "share": 0.322218211352766
+                },
+                {
+                  "name": "Dufferin Grove",
+                  "population": 11276,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Palmerston-Little Italy",
+                  "population": 13171,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Kensington-Chinatown",
+                  "population": 18597,
+                  "servedPopulation": 14034,
+                  "share": 0.7546378448136796
+                },
+                {
+                  "name": "Moss Park",
+                  "population": 22701,
+                  "servedPopulation": 16505,
+                  "share": 0.7270604819170962
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 6.470227730168595,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 9.005315078019102,
+              "detourIndex": 1.237097798779935
+            },
+            "efficiency": {
+              "netNewPopPerBn": 1886.1778145916974,
+              "servedPopPerKm": 10390.23946660943
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 85.7° exceeds 60°",
+              "5 stop gap(s) outside 0.8–1.5 km",
+              "Dufferin Grove only 0% covered"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "Bloor West–Moss Park Express",
+            "type": "subway",
+            "color": "#c026d3",
+            "stops": [
+              {
+                "name": "Runnymede Transfer",
+                "coords": [
+                  -79.4758,
+                  43.6519
+                ]
+              },
+              {
+                "name": "High Park North (Annette St / Keele St)",
+                "coords": [
+                  -79.4678,
+                  43.662
+                ]
+              },
+              {
+                "name": "Dufferin Grove (Bloor St W / Dufferin St)",
+                "coords": [
+                  -79.4347,
+                  43.668
+                ]
+              },
+              {
+                "name": "Ossington Transfer",
+                "coords": [
+                  -79.427,
+                  43.6622
+                ]
+              },
+              {
+                "name": "Queen St West / Niagara St Transfer",
+                "coords": [
+                  -79.4108,
+                  43.653
+                ]
+              },
+              {
+                "name": "Queen St West / Bathurst St Transfer",
+                "coords": [
+                  -79.3993,
+                  43.653
+                ]
+              },
+              {
+                "name": "King Transfer",
+                "coords": [
+                  -79.3728,
+                  43.6524
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 7,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 9.648438777352776,
+              "straightLineKm": 8.286990033204173,
+              "sinuosity": 1.1642874842003639,
+              "turnAnglesDeg": [
+                46.05115197595628,
+                59.96751701502422,
+                8.019422450950843,
+                37.9631544648452,
+                1.7817601516354395
+              ],
+              "maxTurnDeg": 59.96751701502422,
+              "sharpTurns": 0,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.2944047165023518,
+                2.7447891042808426,
+                0.8941749701792017,
+                1.6567914739865914,
+                0.9252126003571772,
+                2.133065912046611
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 3
+              }
+            },
+            "coverage": {
+              "servedPop": 134871,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 123211,
+              "netNewPop": 11660,
+              "areaCoverage": [
+                {
+                  "name": "Runnymede-Bloor West Village",
+                  "population": 10129,
+                  "servedPopulation": 3006,
+                  "share": 0.2967716457695725
+                },
+                {
+                  "name": "High Park North",
+                  "population": 22162,
+                  "servedPopulation": 16510,
+                  "share": 0.7449688656258461
+                },
+                {
+                  "name": "Dufferin Grove",
+                  "population": 11276,
+                  "servedPopulation": 2964,
+                  "share": 0.2628591699184108
+                },
+                {
+                  "name": "Palmerston-Little Italy",
+                  "population": 13171,
+                  "servedPopulation": 10137,
+                  "share": 0.769645433148584
+                },
+                {
+                  "name": "Kensington-Chinatown",
+                  "population": 18597,
+                  "servedPopulation": 16774,
+                  "share": 0.9019734365757918
+                },
+                {
+                  "name": "Moss Park",
+                  "population": 22701,
+                  "servedPopulation": 16505,
+                  "share": 0.7270604819170962
+                }
+              ],
+              "minAreaCoverage": 0.2628591699184108
+            },
+            "cost": {
+              "costBn": 5.874219388676388,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 9.005315078019102,
+              "detourIndex": 1.0714160130724868
+            },
+            "efficiency": {
+              "netNewPopPerBn": 1984.9445906764638,
+              "servedPopPerKm": 13978.530942910154
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "3 stop gap(s) outside 0.8–1.5 km"
+            ]
+          }
+        },
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Bloor–Dundas Crosstown",
+            "type": "subway",
+            "color": "#e85d04",
+            "stops": [
+              {
+                "name": "High Park North (Annette & Keele)",
+                "coords": [
+                  -79.4633,
+                  43.666
+                ]
+              },
+              {
+                "name": "Dufferin Transfer",
+                "coords": [
+                  -79.4347,
+                  43.6607
+                ]
+              },
+              {
+                "name": "Christie Transfer",
+                "coords": [
+                  -79.4169,
+                  43.6578
+                ]
+              },
+              {
+                "name": "Queen St West / Augusta Ave Transfer",
+                "coords": [
+                  -79.3998,
+                  43.6536
+                ]
+              },
+              {
+                "name": "Queen Transfer",
+                "coords": [
+                  -79.3747,
+                  43.6589
+                ]
+              },
+              {
+                "name": "Queen St East / Sherbourne St Transfer",
+                "coords": [
+                  -79.362,
+                  43.6553
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 6,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 8.496249533100407,
+              "straightLineKm": 8.235277377375123,
+              "sinuosity": 1.031689540469184,
+              "turnAnglesDeg": [
+                1.667280194994047,
+                6.030015941369926,
+                34.82516456730726,
+                37.456795401580294
+              ],
+              "maxTurnDeg": 37.456795401580294,
+              "sharpTurns": 0,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                2.374851914796697,
+                1.4677793831325203,
+                1.4527996531945406,
+                2.1035103642733626,
+                1.0973082177032858
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 2
+              }
+            },
+            "coverage": {
+              "servedPop": 147508,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 140894,
+              "netNewPop": 6614,
+              "areaCoverage": [
+                {
+                  "name": "Runnymede-Bloor West Village",
+                  "population": 10129,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "High Park North",
+                  "population": 22162,
+                  "servedPopulation": 2392,
+                  "share": 0.10793249706705171
+                },
+                {
+                  "name": "Dufferin Grove",
+                  "population": 11276,
+                  "servedPopulation": 6184,
+                  "share": 0.548421426037602
+                },
+                {
+                  "name": "Palmerston-Little Italy",
+                  "population": 13171,
+                  "servedPopulation": 12843,
+                  "share": 0.9750968035836307
+                },
+                {
+                  "name": "Kensington-Chinatown",
+                  "population": 18597,
+                  "servedPopulation": 16774,
+                  "share": 0.9019734365757918
+                },
+                {
+                  "name": "Moss Park",
+                  "population": 22701,
+                  "servedPopulation": 22701,
+                  "share": 1
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 5.148124766550204,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 9.005315078019102,
+              "detourIndex": 0.9434705459488849
+            },
+            "efficiency": {
+              "netNewPopPerBn": 1284.739647914961,
+              "servedPopPerKm": 17361.542810780906
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "2 stop gap(s) outside 0.8–1.5 km",
+              "Runnymede-Bloor West Village only 0% covered"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "College–Dundas West Crosstown",
+            "type": "subway",
+            "color": "#dc2626",
+            "stops": [
+              {
+                "name": "High Park Transfer",
+                "coords": [
+                  -79.4634,
+                  43.6564
+                ]
+              },
+              {
+                "name": "Roncesvalles Ave / Boustead Ave Transfer",
+                "coords": [
+                  -79.4511,
+                  43.648
+                ]
+              },
+              {
+                "name": "Dufferin Transfer",
+                "coords": [
+                  -79.4275,
+                  43.665
+                ]
+              },
+              {
+                "name": "Dundas St West / Grace St Transfer",
+                "coords": [
+                  -79.4115,
+                  43.6569
+                ]
+              },
+              {
+                "name": "Spadina Transfer",
+                "coords": [
+                  -79.405,
+                  43.6697
+                ]
+              },
+              {
+                "name": "Queen Transfer",
+                "coords": [
+                  -79.3794,
+                  43.6527
+                ]
+              },
+              {
+                "name": "King Transfer",
+                "coords": [
+                  -79.3762,
+                  43.6527
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 7,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 10.179979462033858,
+              "straightLineKm": 7.0273974479206185,
+              "sinuosity": 1.448613023167784,
+              "turnAnglesDeg": [
+                87.87940819671643,
+                79.52346298166373,
+                104.53566817266051,
+                112.09158691733123,
+                42.376335430476395
+              ],
+              "maxTurnDeg": 112.09158691733123,
+              "sharpTurns": 4,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.3607758909370704,
+                2.6791634287650288,
+                1.5709240235848707,
+                1.5162941017041545,
+                2.795370268077625,
+                0.257451748965108
+              ],
+              "spacingViolations": {
+                "tooClose": 1,
+                "tooFar": 4
+              }
+            },
+            "coverage": {
+              "servedPop": 134286,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 131496,
+              "netNewPop": 2790,
+              "areaCoverage": [
+                {
+                  "name": "Runnymede-Bloor West Village",
+                  "population": 10129,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "High Park North",
+                  "population": 22162,
+                  "servedPopulation": 18436,
+                  "share": 0.831874379568631
+                },
+                {
+                  "name": "Dufferin Grove",
+                  "population": 11276,
+                  "servedPopulation": 1890,
+                  "share": 0.16761262859169918
+                },
+                {
+                  "name": "Palmerston-Little Italy",
+                  "population": 13171,
+                  "servedPopulation": 10933,
+                  "share": 0.8300812390858705
+                },
+                {
+                  "name": "Kensington-Chinatown",
+                  "population": 18597,
+                  "servedPopulation": 1906,
+                  "share": 0.102489648868097
+                },
+                {
+                  "name": "Moss Park",
+                  "population": 22701,
+                  "servedPopulation": 13066,
+                  "share": 0.5755693581780539
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 6.139989731016929,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 9.005315078019102,
+              "detourIndex": 1.1304412309661405
+            },
+            "efficiency": {
+              "netNewPopPerBn": 454.3981541053668,
+              "servedPopPerKm": 13191.185748538926
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 112.1° exceeds 60°",
+              "5 stop gap(s) outside 0.8–1.5 km",
+              "Runnymede-Bloor West Village only 0% covered"
+            ]
+          }
+        },
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Annette–Moss Park Midtown Subway",
+            "type": "subway",
+            "color": "#7c3aed",
+            "stops": [
+              {
+                "name": "Annette & Clendenan (High Park North)",
+                "coords": [
+                  -79.4633,
+                  43.666
+                ]
+              },
+              {
+                "name": "Dufferin Transfer",
+                "coords": [
+                  -79.4347,
+                  43.6607
+                ]
+              },
+              {
+                "name": "Ossington Transfer",
+                "coords": [
+                  -79.4251,
+                  43.656
+                ]
+              },
+              {
+                "name": "Queen St West / Augusta Ave Transfer",
+                "coords": [
+                  -79.3998,
+                  43.6536
+                ]
+              },
+              {
+                "name": "King Transfer",
+                "coords": [
+                  -79.3747,
+                  43.6556
+                ]
+              },
+              {
+                "name": "Queen St East / Sherbourne St Transfer",
+                "coords": [
+                  -79.362,
+                  43.654
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 6,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 8.428806919359982,
+              "straightLineKm": 8.257487629739657,
+              "sinuosity": 1.0207471445677148,
+              "turnAnglesDeg": [
+                19.642240983170492,
+                26.50103930436067,
+                13.673245952558293,
+                16.06776399978944
+              ],
+              "maxTurnDeg": 26.50103930436067,
+              "sharpTurns": 0,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                2.374851914796697,
+                0.9324955914855496,
+                2.0528270483255207,
+                2.0315323456138747,
+                1.0371000191383386
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 3
+              }
+            },
+            "coverage": {
+              "servedPop": 126360,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 119746,
+              "netNewPop": 6614,
+              "areaCoverage": [
+                {
+                  "name": "Runnymede-Bloor West Village",
+                  "population": 10129,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "High Park North",
+                  "population": 22162,
+                  "servedPopulation": 2392,
+                  "share": 0.10793249706705171
+                },
+                {
+                  "name": "Dufferin Grove",
+                  "population": 11276,
+                  "servedPopulation": 7545,
+                  "share": 0.6691202554097198
+                },
+                {
+                  "name": "Palmerston-Little Italy",
+                  "population": 13171,
+                  "servedPopulation": 7865,
+                  "share": 0.5971452433376357
+                },
+                {
+                  "name": "Kensington-Chinatown",
+                  "population": 18597,
+                  "servedPopulation": 16774,
+                  "share": 0.9019734365757918
+                },
+                {
+                  "name": "Moss Park",
+                  "population": 22701,
+                  "servedPopulation": 21914,
+                  "share": 0.9653319237038016
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 5.114403459679991,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 9.005315078019102,
+              "detourIndex": 0.9359813450540662
+            },
+            "efficiency": {
+              "netNewPopPerBn": 1293.210450083232,
+              "servedPopPerKm": 14991.44555201115
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "3 stop gap(s) outside 0.8–1.5 km",
+              "Runnymede-Bloor West Village only 0% covered"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "Dundas West–Moss Park Express",
+            "type": "subway",
+            "color": "#d97706",
+            "stops": [
+              {
+                "name": "Runnymede Transfer",
+                "coords": [
+                  -79.4739,
+                  43.648
+                ]
+              },
+              {
+                "name": "High Park Transfer",
+                "coords": [
+                  -79.4634,
+                  43.6564
+                ]
+              },
+              {
+                "name": "Queen St West / Dunn Ave Transfer",
+                "coords": [
+                  -79.427,
+                  43.644
+                ]
+              },
+              {
+                "name": "Queen St West / Shaw St Transfer",
+                "coords": [
+                  -79.4115,
+                  43.649
+                ]
+              },
+              {
+                "name": "Queen's Park Transfer",
+                "coords": [
+                  -79.3961,
+                  43.6544
+                ]
+              },
+              {
+                "name": "Queen Transfer",
+                "coords": [
+                  -79.3794,
+                  43.6527
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 6,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 8.595471503227948,
+              "straightLineKm": 7.6211093084486015,
+              "sinuosity": 1.1278504421527178,
+              "turnAnglesDeg": [
+                72.78529214237516,
+                48.984314813390625,
+                1.8201787154245443,
+                33.68483723458507
+              ],
+              "maxTurnDeg": 72.78529214237516,
+              "sharpTurns": 1,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.2593899987783121,
+                3.236980458800718,
+                1.3654733434763757,
+                1.3768377152213866,
+                1.356789986951157
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 1
+              }
+            },
+            "coverage": {
+              "servedPop": 121638,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 120335,
+              "netNewPop": 1303,
+              "areaCoverage": [
+                {
+                  "name": "Runnymede-Bloor West Village",
+                  "population": 10129,
+                  "servedPopulation": 527,
+                  "share": 0.052028828117287
+                },
+                {
+                  "name": "High Park North",
+                  "population": 22162,
+                  "servedPopulation": 18936,
+                  "share": 0.8544355202599043
+                },
+                {
+                  "name": "Dufferin Grove",
+                  "population": 11276,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Palmerston-Little Italy",
+                  "population": 13171,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Kensington-Chinatown",
+                  "population": 18597,
+                  "servedPopulation": 18112,
+                  "share": 0.9739205248158305
+                },
+                {
+                  "name": "Moss Park",
+                  "population": 22701,
+                  "servedPopulation": 6053,
+                  "share": 0.26664023611294657
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 5.197735751613974,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 9.005315078019102,
+              "detourIndex": 0.9544887023673905
+            },
+            "efficiency": {
+              "netNewPopPerBn": 250.68607991381614,
+              "servedPopPerKm": 14151.40518519781
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 72.8° exceeds 60°",
+              "1 stop gap(s) outside 0.8–1.5 km",
+              "Dufferin Grove only 0% covered"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "selectionId": "l-shape-west-north",
+      "shape": "L",
+      "areaCount": 7,
+      "areaNames": [
+        "Stonegate-Queensway",
+        "Runnymede-Bloor West Village",
+        "Rockcliffe-Smythe",
+        "Mount Dennis",
+        "Keelesdale-Eglinton West",
+        "Caledonia-Fairbank",
+        "Briar Hill-Belgravia"
+      ],
+      "durationS": 339.46,
+      "throughPathKm": 6.462309221509075,
+      "repairs": [
+        "Auto-repaired Alex Chen's route: relabelled Stonegate-Queensway → Old Mill Transfer; relabelled Rockcliffe-Smythe → High Park Transfer; relabelled Briar Hill-Belgravia → Lawrence West Transfer.",
+        "Auto-repaired Jordan Park's route: relabelled Stonegate-Queensway (Bloor St W & Windermere Ave) → Old Mill Transfer; relabelled Runnymede-Bloor West Village (Bloor St W & Runnymede Rd) → Runnymede Transfer; relabelled Keelesdale-Eglinton West (Keele St & Eglinton Ave W) → Keelesdale Transfer; relabelled Caledonia-Fairbank (Dufferin St & Eglinton Ave W) → Fairbank Transfer; relabelled Briar Hill-Belgravia (Allen Rd & Lawrence Ave W) → Lawrence West Transfer.",
+        "Auto-repaired Alex Chen's route: relabelled Rockcliffe-Smythe (Keele & St Clair W) → St Clair Ave West / Old Stock Yards Rd Transfer; relabelled Briar Hill-Belgravia (Dufferin & Lawrence W) → Lawrence West Transfer.",
+        "Auto-repaired Jordan Park's route: relabelled Rockcliffe-Smythe (Dundas & Scarlett) → High Park Transfer; relabelled Caledonia-Fairbank (Dufferin & Eglinton) → Caledonia Transfer; relabelled Briar Hill (Lawrence & Keele) → Lawrence West Transfer."
+      ],
+      "routes": [
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "West Crosstown Subway",
+            "type": "subway",
+            "color": "#7c3aed",
+            "stops": [
+              {
+                "name": "Old Mill Transfer",
+                "coords": [
+                  -79.4941,
+                  43.6498
+                ]
+              },
+              {
+                "name": "Runnymede Transfer",
+                "coords": [
+                  -79.4758,
+                  43.6519
+                ]
+              },
+              {
+                "name": "High Park Transfer",
+                "coords": [
+                  -79.4595,
+                  43.6555
+                ]
+              },
+              {
+                "name": "Mount Dennis Transfer",
+                "coords": [
+                  -79.4858,
+                  43.688
+                ]
+              },
+              {
+                "name": "Keelesdale Transfer",
+                "coords": [
+                  -79.4745,
+                  43.6904
+                ]
+              },
+              {
+                "name": "Caledonia Transfer",
+                "coords": [
+                  -79.4651,
+                  43.6923
+                ]
+              },
+              {
+                "name": "Fairbank Transfer",
+                "coords": [
+                  -79.4493,
+                  43.6957
+                ]
+              },
+              {
+                "name": "Lawrence West Transfer",
+                "coords": [
+                  -79.4439,
+                  43.7153
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 8,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 12.328528476990392,
+              "straightLineKm": 8.327152195051523,
+              "sinuosity": 1.480521574268418,
+              "turnAnglesDeg": [
+                7.920352872016623,
+                103.61782669945806,
+                104.23028850769154,
+                0.74720382359999,
+                0.9501483709046104,
+                62.190445425084036
+              ],
+              "maxTurnDeg": 104.23028850769154,
+              "sharpTurns": 3,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.4907494393589436,
+                1.371109274718648,
+                4.187377428742085,
+                0.946955501558161,
+                0.7847515496354627,
+                1.3253592071494238,
+                2.222226075827668
+              ],
+              "spacingViolations": {
+                "tooClose": 1,
+                "tooFar": 2
+              }
+            },
+            "coverage": {
+              "servedPop": 92095,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 91695,
+              "netNewPop": 400,
+              "areaCoverage": [
+                {
+                  "name": "Stonegate-Queensway",
+                  "population": 25745,
+                  "servedPopulation": 950,
+                  "share": 0.03690036900369004
+                },
+                {
+                  "name": "Runnymede-Bloor West Village",
+                  "population": 10129,
+                  "servedPopulation": 3006,
+                  "share": 0.2967716457695725
+                },
+                {
+                  "name": "Rockcliffe-Smythe",
+                  "population": 22242,
+                  "servedPopulation": 1275,
+                  "share": 0.05732398165632587
+                },
+                {
+                  "name": "Mount Dennis",
+                  "population": 13364,
+                  "servedPopulation": 4537,
+                  "share": 0.33949416342412453
+                },
+                {
+                  "name": "Keelesdale-Eglinton West",
+                  "population": 11407,
+                  "servedPopulation": 7047,
+                  "share": 0.6177785570263873
+                },
+                {
+                  "name": "Caledonia-Fairbank",
+                  "population": 10037,
+                  "servedPopulation": 5530,
+                  "share": 0.5509614426621501
+                },
+                {
+                  "name": "Briar Hill-Belgravia",
+                  "population": 14590,
+                  "servedPopulation": 9265,
+                  "share": 0.6350239890335847
+                }
+              ],
+              "minAreaCoverage": 0.03690036900369004
+            },
+            "cost": {
+              "costBn": 7.364264238495196,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 6.462309221509075,
+              "detourIndex": 1.9077589843513307
+            },
+            "efficiency": {
+              "netNewPopPerBn": 54.316356263953864,
+              "servedPopPerKm": 7470.072374970252
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 104.2° exceeds 60°",
+              "3 stop gap(s) outside 0.8–1.5 km",
+              "Stonegate-Queensway only 4% covered",
+              "detour index 1.91 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "West Crosstown Connector",
+            "type": "subway",
+            "color": "#dc2626",
+            "stops": [
+              {
+                "name": "Old Mill Transfer",
+                "coords": [
+                  -79.4941,
+                  43.6498
+                ]
+              },
+              {
+                "name": "Runnymede Transfer",
+                "coords": [
+                  -79.4758,
+                  43.6519
+                ]
+              },
+              {
+                "name": "Runnymede Transfer",
+                "coords": [
+                  -79.47,
+                  43.656
+                ]
+              },
+              {
+                "name": "Rockcliffe-Smythe (St Clair Ave W & Scarlett Rd)",
+                "coords": [
+                  -79.485,
+                  43.672
+                ]
+              },
+              {
+                "name": "Mount Dennis Transfer",
+                "coords": [
+                  -79.4858,
+                  43.688
+                ]
+              },
+              {
+                "name": "Keelesdale Transfer",
+                "coords": [
+                  -79.4745,
+                  43.6904
+                ]
+              },
+              {
+                "name": "Fairbank Transfer",
+                "coords": [
+                  -79.4493,
+                  43.6957
+                ]
+              },
+              {
+                "name": "Lawrence West Transfer",
+                "coords": [
+                  -79.4439,
+                  43.7153
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 8,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 11.352291297752723,
+              "straightLineKm": 8.327152195051523,
+              "sinuosity": 1.3632861549593045,
+              "turnAnglesDeg": [
+                35.203837993665616,
+                80.14434298383726,
+                32.223644287553995,
+                75.81664562616578,
+                0.1504175292054478,
+                62.54380750159438
+              ],
+              "maxTurnDeg": 80.14434298383726,
+              "sharpTurns": 3,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.4907494393589436,
+                0.6523647604328593,
+                2.1496730400720114,
+                1.7802816123851861,
+                0.946955501558161,
+                2.1100408681178924,
+                2.222226075827668
+              ],
+              "spacingViolations": {
+                "tooClose": 1,
+                "tooFar": 4
+              }
+            },
+            "coverage": {
+              "servedPop": 90070,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 80516,
+              "netNewPop": 9554,
+              "areaCoverage": [
+                {
+                  "name": "Stonegate-Queensway",
+                  "population": 25745,
+                  "servedPopulation": 950,
+                  "share": 0.03690036900369004
+                },
+                {
+                  "name": "Runnymede-Bloor West Village",
+                  "population": 10129,
+                  "servedPopulation": 3006,
+                  "share": 0.2967716457695725
+                },
+                {
+                  "name": "Rockcliffe-Smythe",
+                  "population": 22242,
+                  "servedPopulation": 8822,
+                  "share": 0.39663699307616224
+                },
+                {
+                  "name": "Mount Dennis",
+                  "population": 13364,
+                  "servedPopulation": 4537,
+                  "share": 0.33949416342412453
+                },
+                {
+                  "name": "Keelesdale-Eglinton West",
+                  "population": 11407,
+                  "servedPopulation": 5510,
+                  "share": 0.4830367318313316
+                },
+                {
+                  "name": "Caledonia-Fairbank",
+                  "population": 10037,
+                  "servedPopulation": 3871,
+                  "share": 0.38567300986350506
+                },
+                {
+                  "name": "Briar Hill-Belgravia",
+                  "population": 14590,
+                  "servedPopulation": 8134,
+                  "share": 0.5575051405071967
+                }
+              ],
+              "minAreaCoverage": 0.03690036900369004
+            },
+            "cost": {
+              "costBn": 6.876145648876362,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 6.462309221509075,
+              "detourIndex": 1.7566926788287827
+            },
+            "efficiency": {
+              "netNewPopPerBn": 1389.4411910197437,
+              "servedPopPerKm": 7934.081115222094
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 80.1° exceeds 60°",
+              "5 stop gap(s) outside 0.8–1.5 km",
+              "Stonegate-Queensway only 4% covered",
+              "detour index 1.76 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Keele–Kingsview North–South Subway",
+            "type": "subway",
+            "color": "#7c3aed",
+            "stops": [
+              {
+                "name": "Keele Transfer",
+                "coords": [
+                  -79.4595,
+                  43.6555
+                ]
+              },
+              {
+                "name": "St Clair Ave West / Old Stock Yards Rd Transfer",
+                "coords": [
+                  -79.4634,
+                  43.6674
+                ]
+              },
+              {
+                "name": "Mount Dennis Transfer",
+                "coords": [
+                  -79.4858,
+                  43.688
+                ]
+              },
+              {
+                "name": "Caledonia Transfer",
+                "coords": [
+                  -79.4651,
+                  43.6923
+                ]
+              },
+              {
+                "name": "Lawrence West Transfer",
+                "coords": [
+                  -79.4532,
+                  43.7154
+                ]
+              },
+              {
+                "name": "Glencairn Transfer",
+                "coords": [
+                  -79.4405,
+                  43.7086
+                ]
+              },
+              {
+                "name": "Kingsview Village (Westway & Kipling N)",
+                "coords": [
+                  -79.5519,
+                  43.6925
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 7,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 19.14950095405255,
+              "straightLineKm": 8.494155886700499,
+              "sinuosity": 2.254432483872279,
+              "turnAnglesDeg": [
+                24.943132560230254,
+                112.43066554534889,
+                53.51751628893371,
+                105.78620792726187,
+                132.42940821987293
+              ],
+              "maxTurnDeg": 132.42940821987293,
+              "sharpTurns": 3,
+              "reversals": 1,
+              "selfIntersections": 1,
+              "spacingKm": [
+                1.3599017160271603,
+                2.914104302459449,
+                1.731670902828803,
+                2.7409434766329204,
+                1.2702994833091599,
+                9.132581072795055
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 4
+              }
+            },
+            "coverage": {
+              "servedPop": 87807,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 66809,
+              "netNewPop": 20998,
+              "areaCoverage": [
+                {
+                  "name": "Stonegate-Queensway",
+                  "population": 25745,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Runnymede-Bloor West Village",
+                  "population": 10129,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Rockcliffe-Smythe",
+                  "population": 22242,
+                  "servedPopulation": 1275,
+                  "share": 0.05732398165632587
+                },
+                {
+                  "name": "Mount Dennis",
+                  "population": 13364,
+                  "servedPopulation": 4537,
+                  "share": 0.33949416342412453
+                },
+                {
+                  "name": "Keelesdale-Eglinton West",
+                  "population": 11407,
+                  "servedPopulation": 5124,
+                  "share": 0.44919786096256686
+                },
+                {
+                  "name": "Caledonia-Fairbank",
+                  "population": 10037,
+                  "servedPopulation": 2442,
+                  "share": 0.2432997907741357
+                },
+                {
+                  "name": "Briar Hill-Belgravia",
+                  "population": 14590,
+                  "servedPopulation": 6761,
+                  "share": 0.4633995887594243
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 10.624750477026275,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 6.462309221509075,
+              "detourIndex": 2.963259772577204
+            },
+            "efficiency": {
+              "netNewPopPerBn": 1976.3287660640722,
+              "servedPopPerKm": 4585.341425381515
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "1 self-intersection(s)",
+              "1 reversal(s) over 120°",
+              "worst turn 132.4° exceeds 60°",
+              "4 stop gap(s) outside 0.8–1.5 km",
+              "Stonegate-Queensway only 0% covered",
+              "detour index 2.96 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "West Toronto North–South Connector",
+            "type": "subway",
+            "color": "#7c3aed",
+            "stops": [
+              {
+                "name": "Runnymede Transfer",
+                "coords": [
+                  -79.4758,
+                  43.6519
+                ]
+              },
+              {
+                "name": "Keele Transfer",
+                "coords": [
+                  -79.4595,
+                  43.6555
+                ]
+              },
+              {
+                "name": "High Park Transfer",
+                "coords": [
+                  -79.463,
+                  43.658
+                ]
+              },
+              {
+                "name": "Keelesdale Transfer",
+                "coords": [
+                  -79.4745,
+                  43.6904
+                ]
+              },
+              {
+                "name": "Caledonia Transfer",
+                "coords": [
+                  -79.4572,
+                  43.6957
+                ]
+              },
+              {
+                "name": "Glencairn Transfer",
+                "coords": [
+                  -79.4405,
+                  43.7086
+                ]
+              },
+              {
+                "name": "Lawrence West Transfer",
+                "coords": [
+                  -79.4533,
+                  43.7154
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 7,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 10.238332637345458,
+              "straightLineKm": 7.2889964092925315,
+              "sinuosity": 1.4046285746955374,
+              "turnAnglesDeg": [
+                118.65866510319402,
+                31.053594164204515,
+                81.65829248762711,
+                23.8763516591086,
+                97.17134422116501
+              ],
+              "maxTurnDeg": 118.65866510319402,
+              "sharpTurns": 3,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.371109274718648,
+                0.39567407191220266,
+                3.71953945515864,
+                1.5106133008938498,
+                1.9646296011073756,
+                1.2767669335547425
+              ],
+              "spacingViolations": {
+                "tooClose": 1,
+                "tooFar": 3
+              }
+            },
+            "coverage": {
+              "servedPop": 76962,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 71871,
+              "netNewPop": 5091,
+              "areaCoverage": [
+                {
+                  "name": "Stonegate-Queensway",
+                  "population": 25745,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Runnymede-Bloor West Village",
+                  "population": 10129,
+                  "servedPopulation": 3006,
+                  "share": 0.2967716457695725
+                },
+                {
+                  "name": "Rockcliffe-Smythe",
+                  "population": 22242,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Mount Dennis",
+                  "population": 13364,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Keelesdale-Eglinton West",
+                  "population": 11407,
+                  "servedPopulation": 5510,
+                  "share": 0.4830367318313316
+                },
+                {
+                  "name": "Caledonia-Fairbank",
+                  "population": 10037,
+                  "servedPopulation": 4624,
+                  "share": 0.46069542692039456
+                },
+                {
+                  "name": "Briar Hill-Belgravia",
+                  "population": 14590,
+                  "servedPopulation": 8602,
+                  "share": 0.5895819054146676
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 6.169166318672729,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 6.462309221509075,
+              "detourIndex": 1.584314876680353
+            },
+            "efficiency": {
+              "netNewPopPerBn": 825.2330601933436,
+              "servedPopPerKm": 7517.044300677684
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 118.7° exceeds 60°",
+              "4 stop gap(s) outside 0.8–1.5 km",
+              "Stonegate-Queensway only 0% covered",
+              "detour index 1.58 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Humber–Kingsview North–South Subway",
+            "type": "subway",
+            "color": "#e85d04",
+            "stops": [
+              {
+                "name": "Runnymede Transfer",
+                "coords": [
+                  -79.4758,
+                  43.6519
+                ]
+              },
+              {
+                "name": "Rockcliffe-Smythe (St Clair W & Scarlett Rd)",
+                "coords": [
+                  -79.4846,
+                  43.6674
+                ]
+              },
+              {
+                "name": "Mount Dennis Transfer",
+                "coords": [
+                  -79.4858,
+                  43.688
+                ]
+              },
+              {
+                "name": "Edenbridge-Humber Valley (Humber & Eglinton W)",
+                "coords": [
+                  -79.5085,
+                  43.6791
+                ]
+              },
+              {
+                "name": "Kingsview Village (Westway & Islington N)",
+                "coords": [
+                  -79.5519,
+                  43.6925
+                ]
+              },
+              {
+                "name": "Elms-Old Rexdale (Albion & Kipling S)",
+                "coords": [
+                  -79.527,
+                  43.705
+                ]
+              },
+              {
+                "name": "Rustic (Jane & Sheppard W)",
+                "coords": [
+                  -79.502,
+                  43.7166
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 7,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 14.851567404107765,
+              "straightLineKm": 7.49644152216447,
+              "sinuosity": 1.98114897050776,
+              "turnAnglesDeg": [
+                20.023969235906524,
+                115.88234492284272,
+                51.29708416255497,
+                122.41832379146486,
+                2.0772967570351826
+              ],
+              "maxTurnDeg": 122.41832379146486,
+              "sharpTurns": 2,
+              "reversals": 1,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.863239912350305,
+                2.292647460802232,
+                2.076370862758746,
+                3.79454743304214,
+                2.436999262323213,
+                2.387762472831128
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 6
+              }
+            },
+            "coverage": {
+              "servedPop": 69165,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 20109,
+              "netNewPop": 49056,
+              "areaCoverage": [
+                {
+                  "name": "Stonegate-Queensway",
+                  "population": 25745,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Runnymede-Bloor West Village",
+                  "population": 10129,
+                  "servedPopulation": 6607,
+                  "share": 0.6522855168328562
+                },
+                {
+                  "name": "Rockcliffe-Smythe",
+                  "population": 22242,
+                  "servedPopulation": 9848,
+                  "share": 0.44276593831489974
+                },
+                {
+                  "name": "Mount Dennis",
+                  "population": 13364,
+                  "servedPopulation": 4537,
+                  "share": 0.33949416342412453
+                },
+                {
+                  "name": "Keelesdale-Eglinton West",
+                  "population": 11407,
+                  "servedPopulation": 573,
+                  "share": 0.05023231349171561
+                },
+                {
+                  "name": "Caledonia-Fairbank",
+                  "population": 10037,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Briar Hill-Belgravia",
+                  "population": 14590,
+                  "servedPopulation": 0,
+                  "share": 0
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 8.475783702053883,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 6.462309221509075,
+              "detourIndex": 2.298182723085423
+            },
+            "efficiency": {
+              "netNewPopPerBn": 5787.78337490049,
+              "servedPopPerKm": 4657.084206537675
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "1 reversal(s) over 120°",
+              "worst turn 122.4° exceeds 60°",
+              "6 stop gap(s) outside 0.8–1.5 km",
+              "Stonegate-Queensway only 0% covered",
+              "detour index 2.30 exceeds 1.3"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "selectionId": "adjacent-scarborough-trio",
+      "shape": "adjacent",
+      "areaCount": 3,
+      "areaNames": [
+        "Dorset Park",
+        "Bendale South",
+        "Ionview"
+      ],
+      "durationS": 424.4,
+      "throughPathKm": 1.2360772689156492,
+      "repairs": [
+        "Auto-repaired Alex Chen's route: relabelled Ionview North / O'Connor & Pharmacy → O'Connor Transfer.",
+        "Auto-repaired Jordan Park's route: merged duplicate Agincourt South – Sheppard & Midland."
+      ],
+      "routes": [
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Dorset Park–Bendale–Ionview Subway",
+            "type": "subway",
+            "color": "#e63946",
+            "stops": [
+              {
+                "name": "Kennedy Transfer",
+                "coords": [
+                  -79.2645,
+                  43.7328
+                ]
+              },
+              {
+                "name": "Ionview & Lawrence Ave E",
+                "coords": [
+                  -79.2699,
+                  43.7428
+                ]
+              },
+              {
+                "name": "Dorset Park / Lawrence & Brimley",
+                "coords": [
+                  -79.2609,
+                  43.7528
+                ]
+              },
+              {
+                "name": "Bendale South / Sheppard & Brimley",
+                "coords": [
+                  -79.2609,
+                  43.7628
+                ]
+              },
+              {
+                "name": "Bendale / Sheppard & Bellamy",
+                "coords": [
+                  -79.2509,
+                  43.7728
+                ]
+              },
+              {
+                "name": "Scarborough City Centre",
+                "coords": [
+                  -79.2585,
+                  43.775
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 6,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 5.6608317561184425,
+              "straightLineKm": 4.717106740044916,
+              "sinuosity": 1.200064375915424,
+              "turnAnglesDeg": [
+                54.68383547416621,
+                33.22721453698298,
+                36.04880292387251,
+                104.3604185577952
+              ],
+              "maxTurnDeg": 104.3604185577952,
+              "sharpTurns": 1,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.1935840441257066,
+                1.3262981634755486,
+                1.1119492664453663,
+                1.3715790808290422,
+                0.6574212012427787
+              ],
+              "spacingViolations": {
+                "tooClose": 1,
+                "tooFar": 0
+              }
+            },
+            "coverage": {
+              "servedPop": 52012,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 14549,
+              "netNewPop": 37463,
+              "areaCoverage": [
+                {
+                  "name": "Dorset Park",
+                  "population": 24770,
+                  "servedPopulation": 3921,
+                  "share": 0.15829632620104966
+                },
+                {
+                  "name": "Bendale South",
+                  "population": 10885,
+                  "servedPopulation": 3629,
+                  "share": 0.3333945796968305
+                },
+                {
+                  "name": "Ionview",
+                  "population": 13382,
+                  "servedPopulation": 7641,
+                  "share": 0.5709908832760424
+                }
+              ],
+              "minAreaCoverage": 0.15829632620104966
+            },
+            "cost": {
+              "costBn": 3.730415878059221,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 1.2360772689156492,
+              "detourIndex": 4.57967466797963
+            },
+            "efficiency": {
+              "netNewPopPerBn": 10042.580029841183,
+              "servedPopPerKm": 9188.049078438597
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 104.4° exceeds 60°",
+              "1 stop gap(s) outside 0.8–1.5 km",
+              "Dorset Park only 16% covered",
+              "detour index 4.58 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "Scarborough Northeast Line",
+            "type": "subway",
+            "color": "#dc2626",
+            "stops": [
+              {
+                "name": "Kennedy Transfer",
+                "coords": [
+                  -79.2645,
+                  43.7328
+                ]
+              },
+              {
+                "name": "Ionview & Lawrence",
+                "coords": [
+                  -79.2499,
+                  43.7452
+                ]
+              },
+              {
+                "name": "Dorset Park - Midland & Lawrence",
+                "coords": [
+                  -79.234,
+                  43.7501
+                ]
+              },
+              {
+                "name": "Bendale South - Midland & Ellesmere",
+                "coords": [
+                  -79.231,
+                  43.7631
+                ]
+              },
+              {
+                "name": "Cedarbrae - Markham Rd & Lawrence",
+                "coords": [
+                  -79.2109,
+                  43.7628
+                ]
+              },
+              {
+                "name": "Agincourt South - Sheppard & Midland",
+                "coords": [
+                  -79.2831,
+                  43.7673
+                ]
+              },
+              {
+                "name": "Malvern - Neilson & Sheppard",
+                "coords": [
+                  -79.2191,
+                  43.8052
+                ]
+              },
+              {
+                "name": "Agincourt North - Sheppard & McCowan",
+                "coords": [
+                  -79.2746,
+                  43.8085
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 8,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 23.21187841625767,
+              "straightLineKm": 8.456433055947505,
+              "sinuosity": 2.7448781611216675,
+              "turnAnglesDeg": [
+                26.45589274943027,
+                57.517118215820865,
+                81.64011845505689,
+                176.28033982834145,
+                135.97316312745033,
+                136.19731583829923
+              ],
+              "maxTurnDeg": 176.28033982834145,
+              "sharpTurns": 4,
+              "reversals": 3,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.8102241618121362,
+                1.3885529280416926,
+                1.4654767931971233,
+                1.614491768578128,
+                5.819429044618905,
+                6.644911536255568,
+                4.468792183754116
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 5
+              }
+            },
+            "coverage": {
+              "servedPop": 84675,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 14549,
+              "netNewPop": 70126,
+              "areaCoverage": [
+                {
+                  "name": "Dorset Park",
+                  "population": 24770,
+                  "servedPopulation": 11276,
+                  "share": 0.45522809850625756
+                },
+                {
+                  "name": "Bendale South",
+                  "population": 10885,
+                  "servedPopulation": 5059,
+                  "share": 0.46476802939825446
+                },
+                {
+                  "name": "Ionview",
+                  "population": 13382,
+                  "servedPopulation": 5351,
+                  "share": 0.3998654909580033
+                }
+              ],
+              "minAreaCoverage": 0.3998654909580033
+            },
+            "cost": {
+              "costBn": 12.805939208128834,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 1.2360772689156492,
+              "detourIndex": 18.778662952535587
+            },
+            "efficiency": {
+              "netNewPopPerBn": 5476.052857996239,
+              "servedPopPerKm": 3647.9167468279247
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "3 reversal(s) over 120°",
+              "worst turn 176.3° exceeds 60°",
+              "5 stop gap(s) outside 0.8–1.5 km",
+              "detour index 18.78 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Dorset Park–Bendale–Ionview Subway",
+            "type": "subway",
+            "color": "#e85d04",
+            "stops": [
+              {
+                "name": "Kennedy Transfer",
+                "coords": [
+                  -79.2645,
+                  43.7328
+                ]
+              },
+              {
+                "name": "Bendale South / Eglinton & Danforth Rd",
+                "coords": [
+                  -79.2561,
+                  43.7379
+                ]
+              },
+              {
+                "name": "Ionview / Lawrence & Birchmount",
+                "coords": [
+                  -79.264,
+                  43.7557
+                ]
+              },
+              {
+                "name": "Dorset Park / Lawrence & Midland",
+                "coords": [
+                  -79.2831,
+                  43.7673
+                ]
+              },
+              {
+                "name": "Warden Woods / Warden & St Clair",
+                "coords": [
+                  -79.3067,
+                  43.7385
+                ]
+              },
+              {
+                "name": "O'Connor Transfer",
+                "coords": [
+                  -79.2988,
+                  43.7255
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 6,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 10.26426191012697,
+              "straightLineKm": 2.8730961347374913,
+              "sinuosity": 3.572543844261165,
+              "turnAnglesDeg": [
+                68.06843408443689,
+                32.25549994426434,
+                99.02932527183262,
+                54.67312395200992
+              ],
+              "maxTurnDeg": 99.02932527183262,
+              "sharpTurns": 2,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                0.8815094213224585,
+                2.0785113686514918,
+                2.0041269606348617,
+                3.721358698855229,
+                1.5787554606629297
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 4
+              }
+            },
+            "coverage": {
+              "servedPop": 60133,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 22725,
+              "netNewPop": 37408,
+              "areaCoverage": [
+                {
+                  "name": "Dorset Park",
+                  "population": 24770,
+                  "servedPopulation": 11807,
+                  "share": 0.4766653209527654
+                },
+                {
+                  "name": "Bendale South",
+                  "population": 10885,
+                  "servedPopulation": 2099,
+                  "share": 0.19283417547083143
+                },
+                {
+                  "name": "Ionview",
+                  "population": 13382,
+                  "servedPopulation": 5351,
+                  "share": 0.3998654909580033
+                }
+              ],
+              "minAreaCoverage": 0.19283417547083143
+            },
+            "cost": {
+              "costBn": 6.032130955063485,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 1.2360772689156492,
+              "detourIndex": 8.30389990031231
+            },
+            "efficiency": {
+              "netNewPopPerBn": 6201.456877954385,
+              "servedPopPerKm": 5858.482619258899
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 99.0° exceeds 60°",
+              "4 stop gap(s) outside 0.8–1.5 km",
+              "Bendale South only 19% covered",
+              "detour index 8.30 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "Scarborough Central Line",
+            "type": "subway",
+            "color": "#dc2626",
+            "stops": [
+              {
+                "name": "Kennedy Transfer",
+                "coords": [
+                  -79.2645,
+                  43.7328
+                ]
+              },
+              {
+                "name": "Ionview – Brimley & Lawrence",
+                "coords": [
+                  -79.264,
+                  43.7556
+                ]
+              },
+              {
+                "name": "Dorset Park – Midland & Lawrence",
+                "coords": [
+                  -79.2895,
+                  43.7528
+                ]
+              },
+              {
+                "name": "Bendale South – Midland & Ellesmere",
+                "coords": [
+                  -79.2831,
+                  43.7673
+                ]
+              },
+              {
+                "name": "Agincourt South – Sheppard & Midland",
+                "coords": [
+                  -79.2862,
+                  43.7777
+                ]
+              },
+              {
+                "name": "Malvern – Neilson & Sheppard",
+                "coords": [
+                  -79.2191,
+                  43.8052
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 6,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 13.675834877376072,
+              "straightLineKm": 8.837450594271125,
+              "sinuosity": 1.5474864307859812,
+              "turnAnglesDeg": [
+                99.49349641648374,
+                116.38895319872367,
+                30.050737133281377,
+                72.85776441657043
+              ],
+              "maxTurnDeg": 116.38895319872367,
+              "sharpTurns": 3,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                2.535562475478993,
+                2.0716278226230687,
+                1.692268960970992,
+                1.182911368166025,
+                6.193464250136993
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 4
+              }
+            },
+            "coverage": {
+              "servedPop": 66133,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 14549,
+              "netNewPop": 51584,
+              "areaCoverage": [
+                {
+                  "name": "Dorset Park",
+                  "population": 24770,
+                  "servedPopulation": 15450,
+                  "share": 0.6237383932176019
+                },
+                {
+                  "name": "Bendale South",
+                  "population": 10885,
+                  "servedPopulation": 1497,
+                  "share": 0.1375287092328893
+                },
+                {
+                  "name": "Ionview",
+                  "population": 13382,
+                  "servedPopulation": 5351,
+                  "share": 0.3998654909580033
+                }
+              ],
+              "minAreaCoverage": 0.1375287092328893
+            },
+            "cost": {
+              "costBn": 7.7379174386880365,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 1.2360772689156492,
+              "detourIndex": 11.063899661687996
+            },
+            "efficiency": {
+              "netNewPopPerBn": 6666.393174743677,
+              "servedPopPerKm": 4835.755958811977
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 116.4° exceeds 60°",
+              "4 stop gap(s) outside 0.8–1.5 km",
+              "Bendale South only 14% covered",
+              "detour index 11.06 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Dorset Park–Bendale–Ionview Subway",
+            "type": "subway",
+            "color": "#e85d04",
+            "stops": [
+              {
+                "name": "Kennedy Transfer",
+                "coords": [
+                  -79.2645,
+                  43.7328
+                ]
+              },
+              {
+                "name": "Bendale South – Eglinton & Midland",
+                "coords": [
+                  -79.2695,
+                  43.7421
+                ]
+              },
+              {
+                "name": "Agincourt South – McCowan & Sheppard",
+                "coords": [
+                  -79.2831,
+                  43.7673
+                ]
+              },
+              {
+                "name": "Dorset Park – Lawrence & Birchmount",
+                "coords": [
+                  -79.264,
+                  43.7557
+                ]
+              },
+              {
+                "name": "Ionview – Lawrence & Warden",
+                "coords": [
+                  -79.2448,
+                  43.7696
+                ]
+              },
+              {
+                "name": "Woburn North – Pharmacy & Finch",
+                "coords": [
+                  -79.2331,
+                  43.7745
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 6,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 9.39019646975613,
+              "straightLineKm": 5.278317457530491,
+              "sinuosity": 1.7790132073923077,
+              "turnAnglesDeg": [
+                0.07403244924362766,
+                151.28752496135596,
+                84.68899523947513,
+                14.930407843537738
+              ],
+              "maxTurnDeg": 151.28752496135596,
+              "sharpTurns": 2,
+              "reversals": 1,
+              "selfIntersections": 0,
+              "spacingKm": [
+                1.1093928081323428,
+                3.007486196083432,
+                2.0041269606348617,
+                2.183186045494633,
+                1.086004459410862
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 3
+              }
+            },
+            "coverage": {
+              "servedPop": 58425,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 14549,
+              "netNewPop": 43876,
+              "areaCoverage": [
+                {
+                  "name": "Dorset Park",
+                  "population": 24770,
+                  "servedPopulation": 15197,
+                  "share": 0.6135244247073073
+                },
+                {
+                  "name": "Bendale South",
+                  "population": 10885,
+                  "servedPopulation": 2435,
+                  "share": 0.22370234267340378
+                },
+                {
+                  "name": "Ionview",
+                  "population": 13382,
+                  "servedPopulation": 8127,
+                  "share": 0.6073083246151547
+                }
+              ],
+              "minAreaCoverage": 0.22370234267340378
+            },
+            "cost": {
+              "costBn": 5.595098234878066,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 1.2360772689156492,
+              "detourIndex": 7.5967714202799765
+            },
+            "efficiency": {
+              "netNewPopPerBn": 7841.864102848266,
+              "servedPopPerKm": 6221.91454547035
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "1 reversal(s) over 120°",
+              "worst turn 151.3° exceeds 60°",
+              "3 stop gap(s) outside 0.8–1.5 km",
+              "Bendale South only 22% covered",
+              "detour index 7.60 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "Scarborough Central Line",
+            "type": "subway",
+            "color": "#e63946",
+            "stops": [
+              {
+                "name": "Bendale South – Midland & Ellesmere",
+                "coords": [
+                  -79.2895,
+                  43.7528
+                ]
+              },
+              {
+                "name": "Kennedy Transfer",
+                "coords": [
+                  -79.2645,
+                  43.7328
+                ]
+              },
+              {
+                "name": "Dorset Park – Midland & Lawrence",
+                "coords": [
+                  -79.2831,
+                  43.7673
+                ]
+              },
+              {
+                "name": "Ionview – Brimley & Lawrence",
+                "coords": [
+                  -79.264,
+                  43.7556
+                ]
+              },
+              {
+                "name": "Agincourt North – Midland & Sheppard",
+                "coords": [
+                  -79.2656,
+                  43.8101
+                ]
+              },
+              {
+                "name": "Woburn – Brimley & Ellesmere",
+                "coords": [
+                  -79.2331,
+                  43.7745
+                ]
+              },
+              {
+                "name": "Malvern – Neilson & Sheppard",
+                "coords": [
+                  -79.2191,
+                  43.8052
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 7,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 23.520870877721986,
+              "straightLineKm": 8.117553546582863,
+              "sinuosity": 2.897531964864371,
+              "turnAnglesDeg": [
+                159.12909286607916,
+                151.5096905764695,
+                131.3085924085844,
+                147.62145896643773,
+                128.0355140868329
+              ],
+              "maxTurnDeg": 159.12909286607916,
+              "sharpTurns": 5,
+              "reversals": 5,
+              "selfIntersections": 0,
+              "spacingKm": [
+                2.996511426379328,
+                4.11687853560111,
+                2.011302476678406,
+                6.06148458537854,
+                4.740794531062403,
+                3.5938993226221996
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 6
+              }
+            },
+            "coverage": {
+              "servedPop": 82993,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 14549,
+              "netNewPop": 68444,
+              "areaCoverage": [
+                {
+                  "name": "Dorset Park",
+                  "population": 24770,
+                  "servedPopulation": 15450,
+                  "share": 0.6237383932176019
+                },
+                {
+                  "name": "Bendale South",
+                  "population": 10885,
+                  "servedPopulation": 1497,
+                  "share": 0.1375287092328893
+                },
+                {
+                  "name": "Ionview",
+                  "population": 13382,
+                  "servedPopulation": 5351,
+                  "share": 0.3998654909580033
+                }
+              ],
+              "minAreaCoverage": 0.1375287092328893
+            },
+            "cost": {
+              "costBn": 12.810435438860994,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 1.2360772689156492,
+              "detourIndex": 19.02864122592895
+            },
+            "efficiency": {
+              "netNewPopPerBn": 5342.831656789141,
+              "servedPopPerKm": 3528.4832960248764
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "5 reversal(s) over 120°",
+              "worst turn 159.1° exceeds 60°",
+              "6 stop gap(s) outside 0.8–1.5 km",
+              "Bendale South only 14% covered",
+              "detour index 19.03 exceeds 1.3"
+            ]
+          }
+        },
+        {
+          "label": "commission final",
+          "event": "route_final",
+          "route": {
+            "name": "Scarborough Central Line",
+            "type": "subway",
+            "color": "#e63946",
+            "stops": [
+              {
+                "name": "Bendale South – Midland & Ellesmere",
+                "coords": [
+                  -79.2895,
+                  43.7528
+                ]
+              },
+              {
+                "name": "Kennedy Transfer",
+                "coords": [
+                  -79.2645,
+                  43.7328
+                ]
+              },
+              {
+                "name": "Dorset Park – Midland & Lawrence",
+                "coords": [
+                  -79.2831,
+                  43.7673
+                ]
+              },
+              {
+                "name": "Agincourt North – Midland & Sheppard",
+                "coords": [
+                  -79.2656,
+                  43.8101
+                ]
+              },
+              {
+                "name": "Malvern – Neilson & Sheppard",
+                "coords": [
+                  -79.2191,
+                  43.8052
+                ]
+              }
+            ]
+          },
+          "prScore": 4,
+          "metrics": {
+            "stopCount": 5,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 15.846521067457918,
+              "straightLineKm": 8.117553546582863,
+              "sinuosity": 1.9521301555354216,
+              "turnAnglesDeg": [
+                159.12909286607916,
+                37.99821195932689,
+                81.66495453165219
+              ],
+              "maxTurnDeg": 159.12909286607916,
+              "sharpTurns": 2,
+              "reversals": 1,
+              "selfIntersections": 0,
+              "spacingKm": [
+                2.996511426379328,
+                4.11687853560111,
+                4.96213203528424,
+                3.7709990701932403
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 4
+              }
+            },
+            "coverage": {
+              "servedPop": 62531,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 14549,
+              "netNewPop": 47982,
+              "areaCoverage": [
+                {
+                  "name": "Dorset Park",
+                  "population": 24770,
+                  "servedPopulation": 14919,
+                  "share": 0.602301170771094
+                },
+                {
+                  "name": "Bendale South",
+                  "population": 10885,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Ionview",
+                  "population": 13382,
+                  "servedPopulation": 5351,
+                  "share": 0.3998654909580033
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 8.673260533728959,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 1.2360772689156492,
+              "detourIndex": 12.820008478401439
+            },
+            "efficiency": {
+              "netNewPopPerBn": 5532.175565740874,
+              "servedPopPerKm": 3946.0396218077385
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "1 reversal(s) over 120°",
+              "worst turn 159.1° exceeds 60°",
+              "4 stop gap(s) outside 0.8–1.5 km",
+              "Bendale South only 0% covered",
+              "detour index 12.82 exceeds 1.3"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "selectionId": "twelve-areas-north-arc",
+      "shape": ">8 areas",
+      "areaCount": 12,
+      "areaNames": [
+        "West Humber-Clairville",
+        "York University Heights",
+        "Bathurst Manor",
+        "Newtonbrook East",
+        "Bayview Woods-Steeles",
+        "Steeles",
+        "Milliken",
+        "Agincourt North",
+        "Malvern West",
+        "Morningside Heights",
+        "Highland Creek",
+        "West Rouge"
+      ],
+      "durationS": 339.43,
+      "throughPathKm": 35.294365831130335,
+      "repairs": [
+        "Auto-repaired Jordan Park's route: relabelled Steeles & Islington → Jane and Finch Transfer."
+      ],
+      "routes": [
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Scarborough–North York Crosstown",
+            "type": "subway",
+            "color": "#e85d04",
+            "stops": [
+              {
+                "name": "Kennedy Transfer (Bloor–Danforth / Eglinton)",
+                "coords": [
+                  -79.2645,
+                  43.7328
+                ]
+              },
+              {
+                "name": "Golfdale–Lawrence (Cedarbrae)",
+                "coords": [
+                  -79.2109,
+                  43.7628
+                ]
+              },
+              {
+                "name": "Warden & Ellesmere (Agincourt South)",
+                "coords": [
+                  -79.2841,
+                  43.7777
+                ]
+              },
+              {
+                "name": "McCowan & Sheppard (Agincourt North)",
+                "coords": [
+                  -79.2607,
+                  43.7752
+                ]
+              },
+              {
+                "name": "Malvern West (Neilson & Sheppard)",
+                "coords": [
+                  -79.2282,
+                  43.8061
+                ]
+              },
+              {
+                "name": "Agincourt North (Markham & Sheppard)",
+                "coords": [
+                  -79.2736,
+                  43.8119
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 6,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 21.466241792093495,
+              "straightLineKm": 8.825815817182946,
+              "sinuosity": 2.4322104875903885,
+              "turnAnglesDeg": [
+                126.81587577587328,
+                172.72621039808558,
+                60.915370128664065,
+                117.47992537483188
+              ],
+              "maxTurnDeg": 172.72621039808558,
+              "sharpTurns": 4,
+              "reversals": 2,
+              "selfIntersections": 0,
+              "spacingKm": [
+                5.446563610037563,
+                6.106716996989386,
+                1.899187127384621,
+                4.314051822123967,
+                3.699722235557958
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 5
+              }
+            },
+            "coverage": {
+              "servedPop": 63593,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 14549,
+              "netNewPop": 49044,
+              "areaCoverage": [
+                {
+                  "name": "West Humber-Clairville",
+                  "population": 14591,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "York University Heights",
+                  "population": 28557,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Bathurst Manor",
+                  "population": 16176,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Newtonbrook East",
+                  "population": 15996,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Bayview Woods-Steeles",
+                  "population": 12499,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Steeles",
+                  "population": 22943,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Milliken",
+                  "population": 24431,
+                  "servedPopulation": 954,
+                  "share": 0.039048749539519464
+                },
+                {
+                  "name": "Agincourt North",
+                  "population": 27790,
+                  "servedPopulation": 9055,
+                  "share": 0.3258366318819719
+                },
+                {
+                  "name": "Malvern West",
+                  "population": 17354,
+                  "servedPopulation": 9278,
+                  "share": 0.5346317851792094
+                },
+                {
+                  "name": "Morningside Heights",
+                  "population": 24972,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Highland Creek",
+                  "population": 12678,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "West Rouge",
+                  "population": 20915,
+                  "servedPopulation": 0,
+                  "share": 0
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 11.633120896046748,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 35.294365831130335,
+              "detourIndex": 0.6082059072771281
+            },
+            "efficiency": {
+              "netNewPopPerBn": 4215.8936057018445,
+              "servedPopPerKm": 2962.465466284962
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "2 reversal(s) over 120°",
+              "worst turn 172.7° exceeds 60°",
+              "5 stop gap(s) outside 0.8–1.5 km",
+              "West Humber-Clairville only 0% covered"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "Scarborough Northeast Corridor",
+            "type": "subway",
+            "color": "#dc2626",
+            "stops": [
+              {
+                "name": "Kennedy Transfer (BD + Eglinton)",
+                "coords": [
+                  -79.2638,
+                  43.7326
+                ]
+              },
+              {
+                "name": "Lawrence & Warden",
+                "coords": [
+                  -79.2434,
+                  43.749
+                ]
+              },
+              {
+                "name": "Woburn (Ellesmere & Pharmacy)",
+                "coords": [
+                  -79.2109,
+                  43.7628
+                ]
+              },
+              {
+                "name": "Agincourt South (Sheppard & Warden)",
+                "coords": [
+                  -79.2831,
+                  43.7673
+                ]
+              },
+              {
+                "name": "Agincourt North (Finch & Midland)",
+                "coords": [
+                  -79.2656,
+                  43.8101
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 5,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 16.261238731776857,
+              "straightLineKm": 8.61881872305626,
+              "sinuosity": 1.8867131627071245,
+              "turnAnglesDeg": [
+                17.584575959710417,
+                144.84683728417284,
+                101.67859084934047
+              ],
+              "maxTurnDeg": 144.84683728417284,
+              "sharpTurns": 2,
+              "reversals": 1,
+              "selfIntersections": 0,
+              "spacingKm": [
+                2.4517991516190567,
+                3.0278785002546527,
+                5.819429044618905,
+                4.96213203528424
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 4
+              }
+            },
+            "coverage": {
+              "servedPop": 58520,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 14013,
+              "netNewPop": 44507,
+              "areaCoverage": [
+                {
+                  "name": "West Humber-Clairville",
+                  "population": 14591,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "York University Heights",
+                  "population": 28557,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Bathurst Manor",
+                  "population": 16176,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Newtonbrook East",
+                  "population": 15996,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Bayview Woods-Steeles",
+                  "population": 12499,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Steeles",
+                  "population": 22943,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Milliken",
+                  "population": 24431,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Agincourt North",
+                  "population": 27790,
+                  "servedPopulation": 14492,
+                  "share": 0.5214825476790212
+                },
+                {
+                  "name": "Malvern West",
+                  "population": 17354,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Morningside Heights",
+                  "population": 24972,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Highland Creek",
+                  "population": 12678,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "West Rouge",
+                  "population": 20915,
+                  "servedPopulation": 0,
+                  "share": 0
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 8.880619365888428,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 35.294365831130335,
+              "detourIndex": 0.460731857588276
+            },
+            "efficiency": {
+              "netNewPopPerBn": 5011.699991439445,
+              "servedPopPerKm": 3598.741828052945
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "1 reversal(s) over 120°",
+              "worst turn 144.8° exceeds 60°",
+              "4 stop gap(s) outside 0.8–1.5 km",
+              "West Humber-Clairville only 0% covered"
+            ]
+          }
+        },
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Steeles Crosstown",
+            "type": "subway",
+            "color": "#dc2626",
+            "stops": [
+              {
+                "name": "Finch West Transfer (Yonge–University)",
+                "coords": [
+                  -79.4911,
+                  43.7649
+                ]
+              },
+              {
+                "name": "Bathurst Manor (Drewry & Sentinel)",
+                "coords": [
+                  -79.4528,
+                  43.7769
+                ]
+              },
+              {
+                "name": "Sheppard–Yonge Transfer (Yonge–University / Sheppard)",
+                "coords": [
+                  -79.4108,
+                  43.761
+                ]
+              },
+              {
+                "name": "Newtonbrook East (Bayview & Steeles)",
+                "coords": [
+                  -79.3918,
+                  43.7901
+                ]
+              },
+              {
+                "name": "Bayview Woods–Steeles (Leslie & Steeles)",
+                "coords": [
+                  -79.3742,
+                  43.8056
+                ]
+              },
+              {
+                "name": "Milliken (Kennedy & Steeles)",
+                "coords": [
+                  -79.3044,
+                  43.7985
+                ]
+              },
+              {
+                "name": "Agincourt North (Markham & Steeles)",
+                "coords": [
+                  -79.2736,
+                  43.8119
+                ]
+              },
+              {
+                "name": "Malvern West (Neilson & Steeles)",
+                "coords": [
+                  -79.2221,
+                  43.8015
+                ]
+              },
+              {
+                "name": "Morningside Heights (Morningside & Sheppard)",
+                "coords": [
+                  -79.2045,
+                  43.8049
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 9,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 27.262617931327483,
+              "straightLineKm": 23.433175372340536,
+              "sinuosity": 1.1634197029697926,
+              "turnAnglesDeg": [
+                50.770610814963284,
+                92.06190347337716,
+                14.153992647664284,
+                58.38355316832377,
+                38.82441017939168,
+                46.37538947821823,
+                30.371273568882774
+              ],
+              "maxTurnDeg": 92.06190347337716,
+              "sharpTurns": 1,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                3.3523063288635147,
+                3.807836744458791,
+                3.5773370301607046,
+                2.228417657647588,
+                5.657041868042485,
+                2.8860523260059807,
+                4.291472241153011,
+                1.4621537349954128
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 7
+              }
+            },
+            "coverage": {
+              "servedPop": 102857,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 37580,
+              "netNewPop": 65277,
+              "areaCoverage": [
+                {
+                  "name": "West Humber-Clairville",
+                  "population": 14591,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "York University Heights",
+                  "population": 28557,
+                  "servedPopulation": 7842,
+                  "share": 0.27460867738207795
+                },
+                {
+                  "name": "Bathurst Manor",
+                  "population": 16176,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Newtonbrook East",
+                  "population": 15996,
+                  "servedPopulation": 1814,
+                  "share": 0.11340335083770943
+                },
+                {
+                  "name": "Bayview Woods-Steeles",
+                  "population": 12499,
+                  "servedPopulation": 7273,
+                  "share": 0.5818865509240739
+                },
+                {
+                  "name": "Steeles",
+                  "population": 22943,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Milliken",
+                  "population": 24431,
+                  "servedPopulation": 954,
+                  "share": 0.039048749539519464
+                },
+                {
+                  "name": "Agincourt North",
+                  "population": 27790,
+                  "servedPopulation": 9055,
+                  "share": 0.3258366318819719
+                },
+                {
+                  "name": "Malvern West",
+                  "population": 17354,
+                  "servedPopulation": 6649,
+                  "share": 0.3831393338711536
+                },
+                {
+                  "name": "Morningside Heights",
+                  "population": 24972,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Highland Creek",
+                  "population": 12678,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "West Rouge",
+                  "population": 20915,
+                  "servedPopulation": 0,
+                  "share": 0
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 14.981308965663741,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 35.294365831130335,
+              "detourIndex": 0.7724354097129381
+            },
+            "efficiency": {
+              "netNewPopPerBn": 4357.229408298765,
+              "servedPopPerKm": 3772.8218272760587
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 92.1° exceeds 60°",
+              "7 stop gap(s) outside 0.8–1.5 km",
+              "West Humber-Clairville only 0% covered"
+            ]
+          }
+        },
+        {
+          "label": "Jordan Park",
+          "event": "route_update",
+          "route": {
+            "name": "Steeles East Subway",
+            "type": "subway",
+            "color": "#e63946",
+            "stops": [
+              {
+                "name": "West Humber-Clairville",
+                "coords": [
+                  -79.5529,
+                  43.6935
+                ]
+              },
+              {
+                "name": "Jane and Finch Transfer",
+                "coords": [
+                  -79.5159,
+                  43.7502
+                ]
+              },
+              {
+                "name": "York University Transfer",
+                "coords": [
+                  -79.4999,
+                  43.7741
+                ]
+              },
+              {
+                "name": "Bathurst Manor & Steeles",
+                "coords": [
+                  -79.4444,
+                  43.7918
+                ]
+              },
+              {
+                "name": "Newtonbrook East",
+                "coords": [
+                  -79.4244,
+                  43.7962
+                ]
+              },
+              {
+                "name": "Finch Transfer",
+                "coords": [
+                  -79.4155,
+                  43.7805
+                ]
+              },
+              {
+                "name": "Bayview Woods-Steeles",
+                "coords": [
+                  -79.3558,
+                  43.7908
+                ]
+              },
+              {
+                "name": "Milliken",
+                "coords": [
+                  -79.2918,
+                  43.8265
+                ]
+              },
+              {
+                "name": "Agincourt North",
+                "coords": [
+                  -79.2656,
+                  43.8101
+                ]
+              },
+              {
+                "name": "Malvern West",
+                "coords": [
+                  -79.2219,
+                  43.8053
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 10,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 36.10623559480593,
+              "straightLineKm": 29.35003391208562,
+              "sinuosity": 1.2301939991946065,
+              "turnAnglesDeg": [
+                0.5722581568611269,
+                40.360337289534854,
+                6.84345134686099,
+                84.39704854934241,
+                80.91430389909694,
+                24.13083220980526,
+                78.16205481553109,
+                32.11407118521569
+              ],
+              "maxTurnDeg": 84.39704854934241,
+              "sharpTurns": 3,
+              "reversals": 0,
+              "selfIntersections": 0,
+              "spacingKm": [
+                6.970706266733152,
+                2.951882983017821,
+                4.870825743600186,
+                1.6781852059319946,
+                1.886285433496234,
+                4.927392179091178,
+                6.490996708694842,
+                2.7828371400589127,
+                3.5471239341816028
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 9
+              }
+            },
+            "coverage": {
+              "servedPop": 138129,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 35271,
+              "netNewPop": 102858,
+              "areaCoverage": [
+                {
+                  "name": "West Humber-Clairville",
+                  "population": 14591,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "York University Heights",
+                  "population": 28557,
+                  "servedPopulation": 3406,
+                  "share": 0.11927023146689078
+                },
+                {
+                  "name": "Bathurst Manor",
+                  "population": 16176,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Newtonbrook East",
+                  "population": 15996,
+                  "servedPopulation": 6852,
+                  "share": 0.4283570892723181
+                },
+                {
+                  "name": "Bayview Woods-Steeles",
+                  "population": 12499,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Steeles",
+                  "population": 22943,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Milliken",
+                  "population": 24431,
+                  "servedPopulation": 6139,
+                  "share": 0.25127911260284064
+                },
+                {
+                  "name": "Agincourt North",
+                  "population": 27790,
+                  "servedPopulation": 14492,
+                  "share": 0.5214825476790212
+                },
+                {
+                  "name": "Malvern West",
+                  "population": 17354,
+                  "servedPopulation": 7981,
+                  "share": 0.45989397257116515
+                },
+                {
+                  "name": "Morningside Heights",
+                  "population": 24972,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Highland Creek",
+                  "population": 12678,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "West Rouge",
+                  "population": 20915,
+                  "servedPopulation": 0,
+                  "share": 0
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 19.553117797402965,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 35.294365831130335,
+              "detourIndex": 1.0230028148843946
+            },
+            "efficiency": {
+              "netNewPopPerBn": 5260.4398472790635,
+              "servedPopPerKm": 3825.6272836116586
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "worst turn 84.4° exceeds 60°",
+              "9 stop gap(s) outside 0.8–1.5 km",
+              "West Humber-Clairville only 0% covered"
+            ]
+          }
+        },
+        {
+          "label": "Alex Chen",
+          "event": "route_update",
+          "route": {
+            "name": "Steeles Crosstown",
+            "type": "subway",
+            "color": "#dc2626",
+            "stops": [
+              {
+                "name": "Bathurst Manor (Drewry & Sentinel)",
+                "coords": [
+                  -79.4529,
+                  43.7769
+                ]
+              },
+              {
+                "name": "Newtonbrook East (Yonge & Steeles)",
+                "coords": [
+                  -79.4244,
+                  43.7962
+                ]
+              },
+              {
+                "name": "Sheppard–Yonge Transfer (Yonge–University / Sheppard)",
+                "coords": [
+                  -79.4108,
+                  43.761
+                ]
+              },
+              {
+                "name": "Bayview Woods–Steeles (Bayview & Steeles)",
+                "coords": [
+                  -79.3742,
+                  43.8056
+                ]
+              },
+              {
+                "name": "Steeles & Leslie (Milliken West)",
+                "coords": [
+                  -79.3044,
+                  43.7985
+                ]
+              },
+              {
+                "name": "Agincourt North (Markham & Steeles)",
+                "coords": [
+                  -79.2736,
+                  43.8119
+                ]
+              },
+              {
+                "name": "Malvern West (Neilson & Sheppard)",
+                "coords": [
+                  -79.2221,
+                  43.8015
+                ]
+              },
+              {
+                "name": "Morningside Heights (Morningside & Sheppard)",
+                "coords": [
+                  -79.2045,
+                  43.8049
+                ]
+              }
+            ]
+          },
+          "metrics": {
+            "stopCount": 8,
+            "mode": "subway",
+            "geometry": {
+              "totalKm": 27.261385264974535,
+              "straightLineKm": 20.18025936352939,
+              "sinuosity": 1.3508937013090352,
+              "turnAnglesDeg": [
+                117.22871660031218,
+                133.44390719875142,
+                67.10635141261432,
+                38.82441017939168,
+                46.37538947821823,
+                30.371273568882774
+              ],
+              "maxTurnDeg": 133.44390719875142,
+              "sharpTurns": 3,
+              "reversals": 1,
+              "selfIntersections": 0,
+              "spacingKm": [
+                3.1368249126114036,
+                4.063503951557673,
+                5.76433623060857,
+                5.657041868042485,
+                2.8860523260059807,
+                4.291472241153011,
+                1.4621537349954128
+              ],
+              "spacingViolations": {
+                "tooClose": 0,
+                "tooFar": 6
+              }
+            },
+            "coverage": {
+              "servedPop": 96494,
+              "existingNetworkPop": 1293827,
+              "overlapPop": 29738,
+              "netNewPop": 66756,
+              "areaCoverage": [
+                {
+                  "name": "West Humber-Clairville",
+                  "population": 14591,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "York University Heights",
+                  "population": 28557,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Bathurst Manor",
+                  "population": 16176,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Newtonbrook East",
+                  "population": 15996,
+                  "servedPopulation": 1207,
+                  "share": 0.07545636409102276
+                },
+                {
+                  "name": "Bayview Woods-Steeles",
+                  "population": 12499,
+                  "servedPopulation": 2471,
+                  "share": 0.1976958156652532
+                },
+                {
+                  "name": "Steeles",
+                  "population": 22943,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Milliken",
+                  "population": 24431,
+                  "servedPopulation": 954,
+                  "share": 0.039048749539519464
+                },
+                {
+                  "name": "Agincourt North",
+                  "population": 27790,
+                  "servedPopulation": 9055,
+                  "share": 0.3258366318819719
+                },
+                {
+                  "name": "Malvern West",
+                  "population": 17354,
+                  "servedPopulation": 6649,
+                  "share": 0.3831393338711536
+                },
+                {
+                  "name": "Morningside Heights",
+                  "population": 24972,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "Highland Creek",
+                  "population": 12678,
+                  "servedPopulation": 0,
+                  "share": 0
+                },
+                {
+                  "name": "West Rouge",
+                  "population": 20915,
+                  "servedPopulation": 0,
+                  "share": 0
+                }
+              ],
+              "minAreaCoverage": 0
+            },
+            "cost": {
+              "costBn": 14.830692632487267,
+              "perKmBn": 0.5,
+              "perStationBn": 0.15
+            },
+            "detour": {
+              "throughPathKm": 35.294365831130335,
+              "detourIndex": 0.7724004844118618
+            },
+            "efficiency": {
+              "netNewPopPerBn": 4501.205820540581,
+              "servedPopPerKm": 3539.5853534990983
+            }
+          },
+          "gate": {
+            "passed": false,
+            "failures": [
+              "1 reversal(s) over 120°",
+              "worst turn 133.4° exceeds 60°",
+              "6 stop gap(s) outside 0.8–1.5 km",
+              "West Humber-Clairville only 0% covered"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
