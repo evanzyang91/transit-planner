@@ -41,6 +41,7 @@ const HAIKU = "claude-haiku-4-5-20251001";
 const SONNET = "claude-sonnet-4-6";
 const MAX_REVISIONS = 2;
 const MAX_EXISTING_STOPS_IN_BRIEF = 90;
+const MAX_NEIGHBOURHOODS_IN_BRIEF = 60;
 
 const QUOTE_BLOCK = `Also include a \`\`\`quote block with a single punchy sentence (max 15 words) summarising your stance — written in first person, as if speaking aloud:
 
@@ -455,12 +456,25 @@ function allCandidateStops(state: CouncilState): string[] {
   return Array.from(new Set(names));
 }
 
+/**
+ * Resolve a UI-selected neighbourhood name to its real polygon: the official
+ * 158-entry City catalogue first (matches every AREA_NAME the UI can send),
+ * falling back to the small legacy hand-drawn set for an older/custom name
+ * that isn't in the City data. Exported for testing — buildDataBrief itself
+ * needs a live census lookup that a unit test shouldn't depend on.
+ */
+export function resolveBriefNeighbourhood(name: string): { name: string; ring: [number, number][] } | null {
+  return cityNeighbourhoodRing(name) ?? neighbourhoodRing(name);
+}
+
 // The brief's demand section used to just echo the target names back — zero
 // data, so planners "resolved" locations from model memory. Now each target is
 // resolved server-side: catalogued neighbourhoods get real centroids + census
-// population; named stations get their actual coordinates from the network;
-// anything unresolvable is explicitly flagged so planners know they MUST look
-// it up with query_population instead of guessing.
+// population; named stations get their actual coordinates from the network.
+// A name that resolves against neither catalogue is a real data error —
+// surfaced as such in the brief — because query_population needs coordinates
+// the model doesn't have for an unresolved name, so pointing the model at
+// that tool here would just be circular.
 async function buildDataBrief(
   neighbourhoods: string[],
   stationNames: string[],
@@ -468,8 +482,9 @@ async function buildDataBrief(
 ): Promise<string> {
   const lines: string[] = [];
 
-  for (const n of neighbourhoods.slice(0, 8)) {
-    const hood = neighbourhoodRing(n);
+  const includedNeighbourhoods = neighbourhoods.slice(0, MAX_NEIGHBOURHOODS_IN_BRIEF);
+  for (const n of includedNeighbourhoods) {
+    const hood = resolveBriefNeighbourhood(n);
     if (hood) {
       const centroid = ringCentroid(hood.ring);
       const pop = await populationInRadius([centroid[0], centroid[1]], 1.5);
@@ -478,8 +493,12 @@ async function buildDataBrief(
           (pop ? `, census population within 1.5 km: ${pop.population.toLocaleString()}` : ", census data unavailable"),
       );
     } else {
-      lines.push(`- ${n}: not in the neighbourhood catalogue — locate it with query_population before placing stops there.`);
+      lines.push(`- ${n}: COULD NOT BE RESOLVED — this name matches no entry in the neighbourhood catalogue. Treat this as a data error; do not guess its location.`);
     }
+  }
+  const omittedNeighbourhoods = neighbourhoods.length - includedNeighbourhoods.length;
+  if (omittedNeighbourhoods > 0) {
+    lines.push(`(${omittedNeighbourhoods} additional selected neighbourhoods omitted from this token-limited brief — see the "Serve:" line above for the full list.)`);
   }
 
   for (const s of stationNames.slice(0, 8)) {
