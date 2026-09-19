@@ -2,11 +2,36 @@
 
 This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
 
-- Add durable project-specific notes here as they are discovered through real work.
-- The app lives in `web/`; run `npm run check` (lint + typecheck + tests) and `npm run dev` from `web/`, not the repo root.
-- There are two Toronto neighbourhood catalogues — don't let new code pick the wrong one. `web/src/server/map-data/city-neighbourhoods.ts` is the real one: the official 158-entry City dataset, matching every `AREA_NAME` in `web/public/Neighbourhoods - 4326.geojson` (what the UI sends). `web/src/app/map/toronto-neighbourhoods.ts` is a legacy 16-entry hand-drawn downtown-only set kept only as a fallback for old/custom names. Any new code resolving a neighbourhood name should call `cityNeighbourhoodRing`/`cityNeighbourhoodAt` from `city-neighbourhoods.ts` first (see `web/src/server/map-data/tools.ts` and `resolveBriefNeighbourhood` in `web/src/server/council-graph.ts` for the pattern), falling back to the legacy set only if needed.
-- Local `web/.env` needs `ANTHROPIC_API_KEY`, `SUPABASE_URL`/`SUPABASE_KEY`, `ELEVENLABS_KEY`, `NEXT_PUBLIC_MAPBOX_TOKEN`, and `AUTH0_*`/`APP_BASE_URL` to run `npm run dev` end-to-end (see `web/src/env.js`). No login is required to use the map/council feature.
-- `npm run dev` currently 500s on every page: `web/src/lib/analytics.ts` imports `mixpanel-browser`, which isn't in `web/package.json`. Pre-existing, unrelated to any one feature — install it locally to unblock manual testing, but don't ship the dependency add as a side effect of an unrelated PR.
+## Working in this repo
+
+- The Next.js app is `web/`. Run every npm command from there, not the repo root.
+- `npm run check` = `validate-routes && vitest run && next lint && tsc --noEmit`.
+  **It does not pass on a clean checkout**: ~38 files carry pre-existing `next lint`
+  errors and 4 carry pre-existing `tsc` errors. Judge a change by whether it adds
+  errors in the files it touches, not by the exit code. `vitest run` and
+  `validate-routes` do pass and should stay passing.
+- The repo is not Prettier-formatted (`npm run format:check` fails widely and is
+  deliberately absent from `check`). Match the surrounding file, not Prettier.
+- One `.env` at the repo root, gitignored. The app reads `ANTHROPIC_API_KEY`
+  (`web/src/env.js`); a key stored as `CLAUDE_KEY` will not be picked up.
+
+## Route generation
+
+- `web/src/server/route-metrics.ts` is the single source of truth for what makes a
+  route good: cost, coverage, geometry, efficiency. It is pure and I/O-free —
+  population is injected via `PopulationSource` — so it is usable from tests, the
+  server and scripts alike. Older per-caller cost formulas still exist in
+  `council.ts` and `TransitMap.tsx`; do not add a fourth.
+- `web/scripts/eval-routes.mjs` drives the **live** council against the golden
+  selections and records what it produces. `--list` shows the selections;
+  `--recompute` re-scores the recorded baseline without spending API credit.
+  It loads the app's TypeScript directly via Node type-stripping plus
+  `module.registerHooks` — no build step, no duplicated copy of the metrics.
+- Fixtures in `web/src/server/__fixtures__/`: `golden-selections.json` (the
+  selections, with polygons from the City's 158-neighbourhood file) and
+  `baseline-routes.json` (recorded live council output, scored).
+- `web/src/server/AGENTS.MD` says the project is "frontend-only, do not modify
+  server-side logic". That is stale and contradicts current work in `src/server`.
 
 ## Maintaining this file
 

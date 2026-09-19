@@ -26,9 +26,15 @@ import {
   type ToolContext,
 } from "./map-data/tools";
 import { networkFromStops } from "./map-data/network";
-import { populationInRadius } from "./map-data/census";
-import { cityNeighbourhoodRing } from "./map-data/city-neighbourhoods";
+import { getTorontoRaster, populationInRadius } from "./map-data/census";
 import { neighbourhoodRing, ringCentroid } from "./map-data/geo";
+import {
+  computeRouteMetrics,
+  evaluateGate,
+  populationSourceFromBlocks,
+  type RouteMetrics,
+  type SelectedArea,
+} from "./route-metrics";
 import { haversineKm } from "~/app/map/geo-utils";
 
 const HAIKU = "claude-haiku-4-5-20251001";
@@ -188,13 +194,61 @@ function estimateRouteScore(route: RouteResult | null, existingLines: ExistingSt
   return scoreRoute(route as unknown as Record<string, unknown>, existingLines);
 }
 
-function emitScoreUpdate(
+/**
+ * The §5 metrics for a proposed route — coverage, cost, geometry, efficiency.
+ *
+ * ADDITIVE AND ADVISORY. Nothing here changes which route is produced, ordered,
+ * repaired or rendered; the numbers ride along on the `score_update` event that
+ * already existed so the UI and the eval runner can see them. Wiring them into
+ * a gate is a later task's job.
+ *
+ * Returns null when the census raster is unavailable — the council must still
+ * run without Supabase, exactly as `buildDataBrief` already degrades.
+ *
+ * KNOWN LIMITATION, inherited not introduced: `areaCoverage` can only be
+ * computed for areas `neighbourhoodRing` resolves, and that is the 16-entry
+ * hand-drawn catalogue rather than the City's 158 official names. Today most
+ * selections therefore report zero areas. Fixing the lookup is a separate task;
+ * this function is written so it starts working the moment that lands.
+ */
+async function routeMetricsFor(
+  route: RouteResult | null,
+  state: CouncilState,
+): Promise<RouteMetrics | null> {
+  if (!route?.stops?.length) return null;
+  const raster = await getTorontoRaster();
+  if (!raster) return null;
+
+  const areas: SelectedArea[] = [];
+  for (const name of state.neighbourhoods) {
+    const hood = neighbourhoodRing(name);
+    if (hood) areas.push({ name: hood.name, ring: hood.ring });
+  }
+
+  return computeRouteMetrics({
+    stops: route.stops,
+    mode: "subway",
+    population: populationSourceFromBlocks(raster.blocks),
+    existingStops: state.existingLines,
+    areas,
+  });
+}
+
+async function emitScoreUpdate(
   config: LangGraphRunnableConfig,
   agentName: "Alex Chen" | "Jordan Park",
   score: RouteScore | null,
-): void {
+  route: RouteResult | null,
+  state: CouncilState,
+): Promise<void> {
   if (!score) return;
-  emit(config, { type: "score_update", agent: agentName, score });
+  const metrics = await routeMetricsFor(route, state);
+  emit(config, {
+    type: "score_update",
+    agent: agentName,
+    score,
+    ...(metrics ? { metrics, gate: evaluateGate(metrics) } : {}),
+  });
 }
 
 function buildOrchestratorDirective(state: CouncilState): OrchestratorDirective {
@@ -821,7 +875,7 @@ async function plannerANode(state: CouncilState, config: LangGraphRunnableConfig
       revisionContext(state, state.priorRouteA, state.priorSimA),
   );
   if (route) emit(config, { type: "route_update", route, round: 1 });
-  emitScoreUpdate(config, "Alex Chen", estimateRouteScore(route, state.existingLines));
+  await emitScoreUpdate(config, "Alex Chen", estimateRouteScore(route, state.existingLines), route, state);
   return { fullA: full, routeA: route };
 }
 
@@ -835,7 +889,7 @@ async function plannerBNode(state: CouncilState, config: LangGraphRunnableConfig
       revisionContext(state, state.priorRouteB, state.priorSimB),
   );
   if (route) emit(config, { type: "route_update", route, round: 2 });
-  emitScoreUpdate(config, "Jordan Park", estimateRouteScore(route, state.existingLines));
+  await emitScoreUpdate(config, "Jordan Park", estimateRouteScore(route, state.existingLines), route, state);
   return { fullB: full, routeB: route };
 }
 
