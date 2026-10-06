@@ -30,15 +30,36 @@ const TRACKING_OPT_OUT_KEY = "skip_tracking";
 const TRACKING_OPT_OUT_PARAM = "m";
 const REFERRAL_KEY = "referral_source";
 
-// Named a "CUSTOM REFERRAL" when the query params don't match anything in
-// REFERRAL_SOURCES or UTM_SOURCE_LABELS above — rather than reporting that
-// with no detail, name whatever we do have: the utm_source value even if
-// it's one we haven't given a friendly label to yet, else the first param's
-// value, else its key (e.g. a bare "?promo" with no value).
-function describeCustomReferral(params: URLSearchParams): string {
-  const utmSource = params.get("utm_source");
-  if (utmSource) return utmSource.toUpperCase();
+// Turns a link's utm_* params into one readable label for Discord, e.g.
+//   ?utm_source=richardli.dev&utm_campaign=transitplanner&utm_content=chatgpt.com
+//   → "richardli.dev (originally chatgpt.com, via the transitplanner page)"
+// utm_source  = the site that linked here (friendly name from UTM_SOURCE_LABELS
+//               if we have one, otherwise the raw value — never dropped)
+// utm_content = how the visitor reached THAT site in the first place, if known
+// utm_campaign = which page on that site they clicked from
+// utm_medium is left out: it's always "referral" for these links, so it adds no info.
+// Returns null when there's no utm_source, so the caller can fall back.
+// 📖 Learn: UTM parameters — https://en.wikipedia.org/wiki/UTM_parameters
+function describeUtmReferral(params: URLSearchParams): string | null {
+  const source = params.get("utm_source");
+  if (!source) return null;
 
+  const label = UTM_SOURCE_LABELS[source.toLowerCase()] ?? source;
+  const details: string[] = [];
+  const content = params.get("utm_content");
+  const campaign = params.get("utm_campaign");
+  if (content) details.push(`originally ${content}`);
+  if (campaign) details.push(`via the ${campaign} page`);
+
+  return details.length > 0 ? `${label} (${details.join(", ")})` : label;
+}
+
+// Named a "CUSTOM REFERRAL" when the query params don't match anything in
+// REFERRAL_SOURCES above and carry no utm_source (those are handled by
+// describeUtmReferral) — rather than reporting that with no detail, name
+// whatever we do have: the first param's value, else its key (e.g. a bare
+// "?promo" with no value).
+function describeCustomReferral(params: URLSearchParams): string {
   const [firstKey, firstValue] = params.entries().next().value ?? [];
   return (firstValue || firstKey || "unknown").toUpperCase();
 }
@@ -80,11 +101,14 @@ export function usePageViewTracker() {
       }
     }
     // utm_source is matched by its VALUE, not its key, so it's checked
-    // separately from the loop above. A fresh utm_source always wins, same
-    // as the shorthand params, since it reflects the link just clicked.
-    const utmSource = params.get("utm_source")?.toLowerCase();
-    if (utmSource && UTM_SOURCE_LABELS[utmSource]) {
-      referralSource = UTM_SOURCE_LABELS[utmSource];
+    // separately from the loop above. ANY fresh utm_source wins — even one
+    // without a UTM_SOURCE_LABELS entry — since it reflects the link just
+    // clicked. (Previously an unlabelled utm_source was ignored here, so a
+    // returning visitor who once came from e.g. LinkedIn got mislabelled
+    // "LinkedIn" on a later richardli.dev visit, from the stale stored value.)
+    const utmReferral = describeUtmReferral(params);
+    if (utmReferral) {
+      referralSource = utmReferral;
       localStorage.setItem(REFERRAL_KEY, referralSource);
     }
 
