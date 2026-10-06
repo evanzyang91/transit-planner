@@ -373,25 +373,17 @@ export function createAnthropicProvider(): AIProvider {
         result = await gen.next();
       }
 
-      const { assistantText, history: nextHistory } = result.value;
-      const stored = nextHistory
-        .filter((m): m is { role: "user" | "assistant"; content: string } =>
-          typeof m.content === "string" && (m.role === "user" || m.role === "assistant"),
-        )
-        .map((m) => ({ role: m.role, content: m.content }));
-
-      if (stored.length > 0) {
-        threadStore.set(threadId, { ...thread, messages: stored });
-      } else if (assistantText) {
-        threadStore.set(threadId, {
-          ...thread,
-          messages: [
-            ...thread.messages,
-            { role: "user", content },
-            { role: "assistant", content: assistantText },
-          ],
-        });
-      }
+      // `nextHistory` is the FULL conversation (params.history plus this turn's
+      // exchange) built by streamMapToolResponse — store it as-is, the same way
+      // streamMessageWithReadTools does above. A prior version filtered this down
+      // to only messages with plain-string content, but tool_use/tool_result
+      // blocks are ALWAYS arrays (only the very first raw user message in a turn
+      // is a bare string) — so that filter silently discarded every tool call and
+      // result, then overwrote history with just that one leftover fragment.
+      // Net effect: any conversation that used a tool (i.e. virtually all of
+      // them) lost all memory beyond its first message on the very next turn.
+      const { history: nextHistory } = result.value;
+      threadStore.set(threadId, { ...thread, messages: nextHistory });
     },
 
     async *streamDirect(system, messages: ChatMessage[], model = "claude-haiku-4-5-20251001", maxTokens = 1024) {

@@ -76,7 +76,19 @@ export async function* streamMapToolResponse(
   // of OTel ambient context, which an async generator cannot keep current
   // across its yields.
   const turn = tracingEnabled
-    ? startObservation("map-assistant", { input: params.userMessage }, { asType: "agent" })
+    ? startObservation(
+        "map-assistant",
+        {
+          input: params.userMessage,
+          // Only set by the benchmark runner — lets it find this trace afterward
+          // via the Langfuse API and inspect READ-tool calls, which never reach
+          // the client's SSE stream (see ToolContext.benchmarkRunId).
+          ...(params.ctx.benchmarkRunId
+            ? { metadata: { benchmarkRunId: params.ctx.benchmarkRunId } }
+            : {}),
+        },
+        { asType: "agent" },
+      )
     : null;
 
   try {

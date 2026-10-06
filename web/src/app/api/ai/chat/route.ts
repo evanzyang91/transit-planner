@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
        * existingLines. Ignored unless mapTools is set.
        */
       networkRoutes?: unknown;
+      /** Set only by scripts/ai-benchmark/run.mjs — see ToolContext.benchmarkRunId. */
+      benchmarkRunId?: string;
     };
 
     const {
@@ -38,6 +40,7 @@ export async function POST(request: NextRequest) {
       provider,
       mapTools = false,
       networkRoutes,
+      benchmarkRunId,
     } = body;
 
     void trackChatMessage(request.headers.get("host"), { message, model });
@@ -61,6 +64,7 @@ export async function POST(request: NextRequest) {
       mapCtx = {
         network,
         artifacts: new ArtifactStore(),
+        benchmarkRunId,
         systemPrompt: buildMapAssistantSystemPrompt(
           network,
           coverage

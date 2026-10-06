@@ -150,3 +150,18 @@ either ships, update `web/src/app/privacy/page.tsx` in the same commit.
 
 Note: the `skip_tracking` localStorage opt-out covers Mixpanel and visit
 reporting only. Both flows above are server-side and ignore it.
+
+
+## Future: truer simulation + emissions (added 2026-10-06)
+
+- **More truly agentic commuter simulation** — individual commuters with their
+  own origin/destination, schedule, and mode choice reacting to the network,
+  rather than aggregate flows. Would give the council and the Ask AI loop a
+  more realistic signal to test proposed networks against.
+- **Greenhouse gas emission predictions** — estimate the emissions impact of a
+  network change (e.g. car trips shifted to transit), via rule-based
+  algorithms (mode-shift × trip length × per-mode emission factors) or a
+  trained ML model.
+
+📖 Learn: agent-based modelling (ABM) in transport — e.g. MATSim — and
+"mode share / mode shift" emission factors.
