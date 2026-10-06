@@ -27,6 +27,7 @@ import {
 } from "./map-data/tools";
 import { networkFromStops } from "./map-data/network";
 import { getTorontoRaster, populationInRadius } from "./map-data/census";
+import { cityNeighbourhoodRing } from "./map-data/city-neighbourhoods";
 import { neighbourhoodRing, ringCentroid } from "./map-data/geo";
 import {
   computeRouteMetrics,
