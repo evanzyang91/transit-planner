@@ -74,6 +74,14 @@ export interface ToolContext {
    * the provider's stored assistant (which is created once per conversation).
    */
   systemPrompt?: string;
+  /**
+   * Set only by the automated benchmark script (scripts/ai-benchmark/run.mjs).
+   * Recorded on the turn's Langfuse trace so the runner can look the trace back
+   * up afterward and inspect READ-tool calls — those never reach the client's
+   * SSE stream (only WRITE tools that actually render do), so this is the only
+   * way to verify read-tool selection from outside the process.
+   */
+  benchmarkRunId?: string;
 }
 
 // ── Small shared coercions ────────────────────────────────────────────────────

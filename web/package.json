@@ -13,6 +13,8 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
     "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
     "lint": "next lint",
+    "bench:ai:seed": "node scripts/ai-benchmark/dataset.mjs",
+    "bench:ai:run": "node scripts/ai-benchmark/run.mjs",
     "lint:fix": "next lint --fix",
     "preview": "next build && next start",
     "start": "next start",
@@ -55,6 +57,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
+    "@langfuse/client": "^5.11.0",
     "@tailwindcss/postcss": "^4.0.15",
     "@types/jszip": "^3.4.0",
     "@types/node": "^20.14.10",
