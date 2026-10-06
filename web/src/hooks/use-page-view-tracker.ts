@@ -16,21 +16,52 @@ const REFERRAL_SOURCES: Record<string, string> = {
 };
 // ──────────────────────────────────────────────────────────────────────────────
 
+// ─── UTM-style referral links ───────────────────────────────────────────────
+// Some links (e.g. a resume/CV, a QR code, a link shortener) use the
+// conventional ?utm_source=<value> format instead of the single-letter
+// shorthand above. This map is keyed by the utm_source VALUE (lowercased),
+// not the param name — add an entry here for each new UTM link you create.
+const UTM_SOURCE_LABELS: Record<string, string> = {
+  resume: "Resume",
+};
+// ──────────────────────────────────────────────────────────────────────────────
+
 const TRACKING_OPT_OUT_KEY = "skip_tracking";
 const TRACKING_OPT_OUT_PARAM = "m";
+const REFERRAL_KEY = "referral_source";
 
-function saveTrackingOptOutFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  if (!params.has(TRACKING_OPT_OUT_PARAM)) return;
+// Turns a link's utm_* params into one readable label for Discord, e.g.
+//   ?utm_source=richardli.dev&utm_campaign=transitplanner&utm_content=chatgpt.com
+//   → "richardli.dev (originally chatgpt.com, via the transitplanner page)"
+// utm_source  = the site that linked here (friendly name from UTM_SOURCE_LABELS
+//               if we have one, otherwise the raw value — never dropped)
+// utm_content = how the visitor reached THAT site in the first place, if known
+// utm_campaign = which page on that site they clicked from
+// utm_medium is left out: it's always "referral" for these links, so it adds no info.
+// Returns null when there's no utm_source, so the caller can fall back.
+// 📖 Learn: UTM parameters — https://en.wikipedia.org/wiki/UTM_parameters
+function describeUtmReferral(params: URLSearchParams): string | null {
+  const source = params.get("utm_source");
+  if (!source) return null;
 
-  localStorage.setItem(TRACKING_OPT_OUT_KEY, "1");
-  params.delete(TRACKING_OPT_OUT_PARAM);
-  const query = params.toString();
-  window.history.replaceState(
-    {},
-    "",
-    `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
-  );
+  const label = UTM_SOURCE_LABELS[source.toLowerCase()] ?? source;
+  const details: string[] = [];
+  const content = params.get("utm_content");
+  const campaign = params.get("utm_campaign");
+  if (content) details.push(`originally ${content}`);
+  if (campaign) details.push(`via the ${campaign} page`);
+
+  return details.length > 0 ? `${label} (${details.join(", ")})` : label;
+}
+
+// Named a "CUSTOM REFERRAL" when the query params don't match anything in
+// REFERRAL_SOURCES above and carry no utm_source (those are handled by
+// describeUtmReferral) — rather than reporting that with no detail, name
+// whatever we do have: the first param's value, else its key (e.g. a bare
+// "?promo" with no value).
+function describeCustomReferral(params: URLSearchParams): string {
+  const [firstKey, firstValue] = params.entries().next().value ?? [];
+  return (firstValue || firstKey || "unknown").toUpperCase();
 }
 
 // Fires a Discord webhook once per page load to log visitor info.
@@ -43,7 +74,61 @@ export function usePageViewTracker() {
   const slashKeyHeld = useRef(false);
 
   useEffect(() => {
-    saveTrackingOptOutFromUrl();
+    // Capture the full URL up front, before anything below strips params from
+    // it, so the Discord log shows exactly what the visitor landed on.
+    const fullUrl = window.location.href;
+    const params = new URLSearchParams(window.location.search);
+
+    // "m" is a "please don't track me" signal, not a referral source — pull
+    // it out before computing the referral label below.
+    if (params.has(TRACKING_OPT_OUT_PARAM)) {
+      localStorage.setItem(TRACKING_OPT_OUT_KEY, "1");
+      params.delete(TRACKING_OPT_OUT_PARAM);
+    }
+
+    // Referral sticks for the whole visit (and future visits): we persist it in
+    // localStorage and fall back to the stored value when the current URL has no
+    // param — so a page view on a later page still reports the original source.
+    // A fresh referral param always wins and overwrites the stored one.
+    // localStorage (not sessionStorage) → survives new tabs and return visits.
+    // 📖 Learn: Web Storage API — https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage
+    let referralSource: string | null = localStorage.getItem(REFERRAL_KEY);
+    for (const key of params.keys()) {
+      if (REFERRAL_SOURCES[key]) {
+        referralSource = REFERRAL_SOURCES[key];
+        localStorage.setItem(REFERRAL_KEY, referralSource); // new param overwrites old
+        break;
+      }
+    }
+    // utm_source is matched by its VALUE, not its key, so it's checked
+    // separately from the loop above. ANY fresh utm_source wins — even one
+    // without a UTM_SOURCE_LABELS entry — since it reflects the link just
+    // clicked. (Previously an unlabelled utm_source was ignored here, so a
+    // returning visitor who once came from e.g. LinkedIn got mislabelled
+    // "LinkedIn" on a later richardli.dev visit, from the stale stored value.)
+    const utmReferral = describeUtmReferral(params);
+    if (utmReferral) {
+      referralSource = utmReferral;
+      localStorage.setItem(REFERRAL_KEY, referralSource);
+    }
+
+    const rawParams = params.toString();
+
+    // Wipe every tracking param from the URL bar unconditionally. This is a
+    // cosmetic cleanup, not a tracking action, so it must NOT be gated behind
+    // the localhost/staging/opt-out checks in sendVisit() below — otherwise an
+    // opted-out visitor (or anyone on localhost/staging) would keep seeing
+    // ?utm_source=... in their address bar forever, since nothing else would
+    // ever remove it. replaceState rewrites the URL without a reload and
+    // without adding a history entry (back button unaffected).
+    // 📖 Learn: history.replaceState — https://developer.mozilla.org/en-US/docs/Web/API/History/replaceState
+    if (window.location.search) {
+      window.history.replaceState(
+        {},
+        "",
+        `${window.location.pathname}${window.location.hash}`,
+      );
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "/") slashKeyHeld.current = true;
@@ -86,7 +171,7 @@ export function usePageViewTracker() {
 
       const seconds = Math.round(elapsed / 1000);
       // Carry the referral so we still know where the bouncer came from.
-      const referral = localStorage.getItem("referral_source");
+      const referral = localStorage.getItem(REFERRAL_KEY);
       const payload = {
         webhookType: referral ? "referral_visit" : "regular_visit",
         event: referral
@@ -152,41 +237,12 @@ export function usePageViewTracker() {
       sessionStorage.setItem("nav_path", JSON.stringify(pathHistory));
       const pathTrail = pathHistory.join(" → ");
 
-      // Capture the full URL *before* we strip params below, so the logged URL
-      // reflects exactly what the visitor landed on (referral params included).
-      const fullUrl = window.location.href;
-
-      // Read ?param, look it up in REFERRAL_SOURCES, then strip all params so
-      // the URL bar stays clean. replaceState rewrites the URL without a reload
-      // and without adding a history entry (back button unaffected).
-      // 📖 Learn: history.replaceState — https://developer.mozilla.org/en-US/docs/Web/API/History/replaceState
-      const params = new URLSearchParams(window.location.search);
-      const rawParams = params.toString();
-      // Referral sticks for the whole visit (and future visits): we persist it in
-      // localStorage and fall back to the stored value when the current URL has no
-      // param — so a page view on a later page still reports the original source.
-      // A fresh referral param always wins and overwrites the stored one.
-      // localStorage (not sessionStorage) → survives new tabs and return visits.
-      // 📖 Learn: Web Storage API — https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage
-      const REFERRAL_KEY = "referral_source";
-      let referralSource: string | null = localStorage.getItem(REFERRAL_KEY);
-      for (const key of params.keys()) {
-        if (REFERRAL_SOURCES[key]) {
-          referralSource = REFERRAL_SOURCES[key];
-          localStorage.setItem(REFERRAL_KEY, referralSource); // new param overwrites old
-          break;
-        }
-      }
-      if (rawParams) {
-        window.history.replaceState({}, "", window.location.pathname);
-      }
-
       const eventLabel = isBot
         ? `🤖 Bot/crawler on ${currentPath}`
         : referralSource
           ? `👀 New visitor from **${referralSource}**`
           : rawParams
-            ? `👀 New visitor — CUSTOM REFERRAL on ${currentPath}`
+            ? `👀 New visitor — CUSTOM REFERRAL from **${describeCustomReferral(params)}**`
             : `👀 New visitor on ${currentPath}`;
       const webhookType =
         referralSource || rawParams ? "referral_visit" : "regular_visit";
