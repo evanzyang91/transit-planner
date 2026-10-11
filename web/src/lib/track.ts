@@ -9,7 +9,10 @@
 // has no such rules.
 // 📖 Learn: Rules of Hooks — https://react.dev/reference/rules/rules-of-hooks
 
-export type VisitWebhookType = "regular_visit" | "referral_visit";
+export type VisitWebhookType =
+  | "regular_visit"
+  | "referral_visit"
+  | "ai_referral_visit";
 
 export function trackVisit(
   event: string,

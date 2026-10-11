@@ -2,13 +2,14 @@ import type { NextRequest } from "next/server";
 import { env } from "~/env.js";
 import { isStagingHost } from "~/server/is-staging-host";
 
-type VisitWebhookType = "regular_visit" | "referral_visit";
+type VisitWebhookType = "regular_visit" | "referral_visit" | "ai_referral_visit";
 
 function getVisitWebhookType(opts: {
   event: string;
   meta: Record<string, string>;
   webhookType?: VisitWebhookType;
 }): VisitWebhookType {
+  if (opts.webhookType === "ai_referral_visit") return "ai_referral_visit";
   if (opts.webhookType === "referral_visit") return "referral_visit";
 
   const url = opts.meta["🔗 URL"];
@@ -50,10 +51,19 @@ export async function POST(req: NextRequest) {
   };
 
   const visitWebhookType = getVisitWebhookType({ event, meta, webhookType });
-  const webhookUrl =
-    visitWebhookType === "referral_visit"
-      ? env.DISCORD_REFERRAL_VISITS_WEBHOOK_URL
-      : (env.DISCORD_REGULAR_VISITS_WEBHOOK_URL ?? env.DISCORD_WEBHOOK_URL);
+  // AI-assistant visits fall back to the referral channel, so nothing is lost
+  // before DISCORD_AI_VISITS_WEBHOOK_URL is configured.
+  let webhookUrl: string | undefined;
+  if (visitWebhookType === "ai_referral_visit") {
+    webhookUrl =
+      env.DISCORD_AI_VISITS_WEBHOOK_URL ??
+      env.DISCORD_REFERRAL_VISITS_WEBHOOK_URL;
+  } else if (visitWebhookType === "referral_visit") {
+    webhookUrl = env.DISCORD_REFERRAL_VISITS_WEBHOOK_URL;
+  } else {
+    webhookUrl =
+      env.DISCORD_REGULAR_VISITS_WEBHOOK_URL ?? env.DISCORD_WEBHOOK_URL;
+  }
 
   // No secret configured (e.g. fresh clone) → do nothing. Tracking is non-critical.
   if (!webhookUrl) {
@@ -98,7 +108,9 @@ export async function POST(req: NextRequest) {
 
   const embed = {
     title: event,
-    color: 0x5865f2, // Discord "blurple" — matches the blue used elsewhere
+    // Teal for AI-assistant traffic (teal is the app's "AI" colour), otherwise
+    // Discord "blurple" — matches the blue used elsewhere.
+    color: visitWebhookType === "ai_referral_visit" ? 0x14b8a6 : 0x5865f2,
     fields,
     timestamp: new Date().toISOString(),
   };

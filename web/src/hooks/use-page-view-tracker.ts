@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { aiAssistantFromHost } from "~/lib/ai-assistants";
 import { trackVisit } from "~/lib/track";
 
 // ─── Edit this to add/rename referral sources ─────────────────────────────────
@@ -44,7 +45,12 @@ function describeUtmReferral(params: URLSearchParams): string | null {
   const source = params.get("utm_source");
   if (!source) return null;
 
-  const label = UTM_SOURCE_LABELS[source.toLowerCase()] ?? source;
+  // AI assistants (e.g. utm_source=chatgpt.com) get their names from the
+  // shared list in ~/lib/ai-assistants rather than being repeated above.
+  const label =
+    UTM_SOURCE_LABELS[source.toLowerCase()] ??
+    aiAssistantFromHost(source) ??
+    source;
   const details: string[] = [];
   const content = params.get("utm_content");
   const campaign = params.get("utm_campaign");
@@ -114,6 +120,33 @@ export function usePageViewTracker() {
 
     const rawParams = params.toString();
 
+    // ─── AI assistant detection ─────────────────────────────────────────────
+    // Did THIS page load come from a link in an AI assistant's answer?
+    // - utm_source catches ChatGPT, which tags every link it shows.
+    // - document.referrer catches assistants that send no UTM (Perplexity,
+    //   Claude, Gemini…). Browsers usually send only the origin, e.g.
+    //   "https://chatgpt.com/", never the conversation URL, so the user's
+    //   question is never visible to us.
+    // Only the fresh landing counts, not the stored referral, so a returning
+    // visitor who once came from ChatGPT isn't routed as AI traffic forever.
+    // 📖 Learn: document.referrer — https://developer.mozilla.org/en-US/docs/Web/API/Document/referrer
+    const referrerUrl = document.referrer;
+    let referrerHost: string | null = null;
+    try {
+      referrerHost = referrerUrl ? new URL(referrerUrl).hostname : null;
+    } catch {
+      referrerHost = null; // malformed referrer — treat as none
+    }
+    const aiAssistant =
+      aiAssistantFromHost(params.get("utm_source")) ??
+      aiAssistantFromHost(referrerHost);
+    // Referrer-only arrivals (no params at all) get the assistant as their
+    // referral source, the same way a utm_source would have.
+    if (aiAssistant && !rawParams) {
+      referralSource = aiAssistant;
+      localStorage.setItem(REFERRAL_KEY, referralSource);
+    }
+
     // Wipe every tracking param from the URL bar unconditionally. This is a
     // cosmetic cleanup, not a tracking action, so it must NOT be gated behind
     // the localhost/staging/opt-out checks in sendVisit() below — otherwise an
@@ -173,7 +206,11 @@ export function usePageViewTracker() {
       // Carry the referral so we still know where the bouncer came from.
       const referral = localStorage.getItem(REFERRAL_KEY);
       const payload = {
-        webhookType: referral ? "referral_visit" : "regular_visit",
+        webhookType: aiAssistant
+          ? "ai_referral_visit"
+          : referral
+            ? "referral_visit"
+            : "regular_visit",
         event: referral
           ? `👋 Quick bounce from **${referral}** on ${window.location.pathname}`
           : `👋 Quick bounce on ${window.location.pathname}`,
@@ -244,8 +281,13 @@ export function usePageViewTracker() {
           : rawParams
             ? `👀 New visitor — CUSTOM REFERRAL from **${describeCustomReferral(params)}**`
             : `👀 New visitor on ${currentPath}`;
-      const webhookType =
-        referralSource || rawParams ? "referral_visit" : "regular_visit";
+      // AI-assistant landings get their own channel so they don't drown out
+      // the hand-made referral links (LinkedIn, resume…) as they grow.
+      const webhookType = aiAssistant
+        ? "ai_referral_visit"
+        : referralSource || rawParams
+          ? "referral_visit"
+          : "regular_visit";
 
       // trackVisit() calls our own /api/track — the webhook URL never leaves
       // the server, so it can't be scraped from the browser. IP + geolocation
@@ -258,6 +300,16 @@ export function usePageViewTracker() {
           "🔗 URL": fullUrl,
           "🕒 Time": new Date().toLocaleString(),
           ...(rawParams ? { "🔗 Params": `?${rawParams}` } : {}),
+          ...(referrerUrl ? { "↩️ Referrer": referrerUrl } : {}),
+          // ChatGPT links carry the UTM in both the web and mobile app, but the
+          // app often sends no referrer — so this hints at which one it was.
+          ...(aiAssistant
+            ? {
+                "🤖 AI assistant": referrerHost
+                  ? `${aiAssistant} (web, referrer sent)`
+                  : `${aiAssistant} (no referrer — often the mobile app)`,
+              }
+            : {}),
           ...(isBot ? { "🔍 UA": ua } : {}),
         },
         webhookType,

@@ -17,6 +17,10 @@ export const env = createEnv({
     DISCORD_WEBHOOK_URL: z.string().url().optional(),
     DISCORD_REGULAR_VISITS_WEBHOOK_URL: z.string().url().optional(),
     DISCORD_REFERRAL_VISITS_WEBHOOK_URL: z.string().url().optional(),
+    // Visits that came from an AI assistant (ChatGPT, Perplexity, Claude…)
+    // and live page fetches by those assistants. Falls back to the referral
+    // channel when unset.
+    DISCORD_AI_VISITS_WEBHOOK_URL: z.string().url().optional(),
     DISCORD_BUG_REPORTS_WEBHOOK_URL: z.string().url().optional(),
     // Langfuse LLM tracing. All optional: with no keys the tracer is a no-op,
     // so a fresh clone builds and runs without a Langfuse account.
@@ -58,6 +62,7 @@ export const env = createEnv({
       process.env.DISCORD_REGULAR_VISITS_WEBHOOK_URL,
     DISCORD_REFERRAL_VISITS_WEBHOOK_URL:
       process.env.DISCORD_REFERRAL_VISITS_WEBHOOK_URL,
+    DISCORD_AI_VISITS_WEBHOOK_URL: process.env.DISCORD_AI_VISITS_WEBHOOK_URL,
     DISCORD_BUG_REPORTS_WEBHOOK_URL:
       process.env.DISCORD_BUG_REPORTS_WEBHOOK_URL,
     LANGFUSE_SECRET_KEY: process.env.LANGFUSE_SECRET_KEY,
