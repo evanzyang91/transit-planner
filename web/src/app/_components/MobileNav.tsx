@@ -34,6 +34,9 @@ interface MobileNavProps {
 
   // Game Mode
   onOpenGameMode: () => void;
+
+  // Ask AI — opens the same chat as the desktop toolbar's "Ask AI" button
+  onOpenAssistant?: () => void;
 }
 
 // ── Tab bar item config ───────────────────────────────────────────────────────
@@ -159,6 +162,7 @@ export function MobileNav({
   drawMode,
   onSetDrawMode,
   onOpenGameMode,
+  onOpenAssistant,
 }: MobileNavProps) {
   const [sheet, setSheet] = useState<Sheet>(null);
 
@@ -271,17 +275,21 @@ export function MobileNav({
         {/* TODO: render a simplified flat list of ExperimentalPanel features
             instead of the desktop tile grid (grid is too small on mobile) */}
         <div className="space-y-1">
-          {[
-            { label: "Network Stats",     desc: "Routes, stops, headways" },
-            { label: "Route Score",       desc: "Grade selected route" },
-            { label: "Travel Time Map",   desc: "Walkable isochrone from stop" },
-            { label: "Cost Estimator",    desc: "Capital & operating costs" },
-            { label: "Ridership Forecast",desc: "Gravity model projections" },
-            { label: "AI Assistant",      desc: "Chat with your network" },
-          ].map(({ label, desc }) => (
+          {(
+            [
+              { label: "Network Stats",     desc: "Routes, stops, headways" },
+              { label: "Route Score",       desc: "Grade selected route" },
+              { label: "Travel Time Map",   desc: "Walkable isochrone from stop" },
+              { label: "Cost Estimator",    desc: "Capital & operating costs" },
+              { label: "Ridership Forecast",desc: "Gravity model projections" },
+              // Wired: closes this sheet first so the chat isn't hidden behind it.
+              { label: "AI Assistant",      desc: "Chat with your network", onClick: onOpenAssistant },
+            ] as { label: string; desc: string; onClick?: () => void }[]
+          ).map(({ label, desc, onClick }) => (
             <button
               key={label}
-              // TODO: wire each row to open the correct ExperimentalPanel tab
+              // TODO: wire the remaining rows to open the correct ExperimentalPanel tab
+              onClick={onClick ? () => { setSheet(null); onClick(); } : undefined}
               className="flex w-full flex-col items-start py-3 border-b border-stone-100 last:border-0 text-left"
             >
               <span className="text-sm font-medium text-stone-800">{label}</span>

@@ -13,11 +13,18 @@ export function useHeatmap(mapRef: RefObject<mapboxgl.Map | null>, mapLoaded: bo
 
     // ── fetch population data from Supabase via API
     useEffect(() => {
-        let cancelled = false;
-        fetch("/api/population")
+        // An AbortController (instead of a plain `cancelled` flag) actually STOPS
+        // the download when this effect is cleaned up. That matters in dev, where
+        // React StrictMode mounts → unmounts → re-mounts every component: with a
+        // flag, the throwaway first mount still downloaded the whole ~1 MB
+        // response and held a browser connection, so requests piled up.
+        // 📖 Learn: AbortController — https://developer.mozilla.org/en-US/docs/Web/API/AbortController
+        // 📖 Learn: StrictMode double effects — https://react.dev/reference/react/StrictMode#fixing-bugs-found-by-re-running-effects-in-development
+        const controller = new AbortController();
+        fetch("/api/population", { signal: controller.signal })
         .then((res) => res.json())
         .then((rows: { latitude: number; longitude: number; population: number; area: number }[]) => {
-            if (cancelled) return;
+            if (controller.signal.aborted) return;
             if (!Array.isArray(rows)) return;
             // Compute population density (pop/area), then log-normalize to 0–1
             // Log scale is essential because density spans several orders of magnitude
@@ -45,9 +52,18 @@ export function useHeatmap(mapRef: RefObject<mapboxgl.Map | null>, mapLoaded: bo
             if (src) src.setData(fc);
             }
         })
-        .catch((err) => console.error("Failed to fetch population data:", err))
-        .finally(() => { if (!cancelled) setPopLoading(false); });
-        return () => { cancelled = true; };
+        .catch((err: unknown) => {
+            // Aborting rejects the fetch with an "AbortError". We caused that on
+            // purpose (cleanup), so it isn't a failure worth logging.
+            if (controller.signal.aborted) return;
+            console.error("Failed to fetch population data:", err);
+        })
+        .finally(() => {
+            // An aborted run must not flip loading off: under StrictMode the
+            // second (real) mount's request is still in flight.
+            if (!controller.signal.aborted) setPopLoading(false);
+        });
+        return () => controller.abort();
     }, []);
 
 

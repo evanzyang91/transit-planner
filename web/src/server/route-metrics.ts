@@ -91,37 +91,15 @@ export interface RouteMetricsInput {
 // ── Cost model ────────────────────────────────────────────────────────────────
 
 /**
- * Per-mode capital cost, in $B.
+ * Capital cost in $B: `km × perKm(mode) + stations × perStation(mode)`.
  *
- * `perKmBn` for subway/LRT/bus reproduces the numbers already shown to users in
- * `TransitMap.tsx:5147` (500 / 80 / 4 $M per km), which is also what
- * `council.ts`'s `km × 0.5` meant when every route is a subway. What that
- * formula was missing is the station term: stations are a large, *stop-count*
- * driven share of real capital cost, so a metric without it rates a 20-stop
- * line and a 6-stop line of the same length identically.
- *
- * `perStationBn` is a documented default, not a measured figure — it is one of
- * the product choices flagged in the report's §7 D5. Order-of-magnitude
- * anchors: recent Toronto subway stations land in the $100–300M range.
+ * The model now lives in ~/lib/cost-model.ts (client-safe), so the map panels
+ * use the exact same formula as these server metrics. Re-exported here so
+ * existing server imports keep working. The station term matters: without it a
+ * 20-stop line and a 6-stop line of the same length would cost the same.
  */
-export const MODE_COSTS: Record<TransitMode, { perKmBn: number; perStationBn: number }> = {
-  subway: { perKmBn: 0.5, perStationBn: 0.15 },
-  lrt: { perKmBn: 0.08, perStationBn: 0.025 },
-  streetcar: { perKmBn: 0.08, perStationBn: 0.025 },
-  bus: { perKmBn: 0.004, perStationBn: 0.001 },
-};
-
-/**
- * Capital cost in $B: `km × unitCost(mode) + stations × stationCost(mode)`.
- *
- * THE single source of truth. The three existing formulas stay where they are
- * for now — migrating their callers is a later task — but no new caller should
- * add a fourth.
- */
-export function costBn(totalKm: number, stopCount: number, mode: TransitMode = "subway"): number {
-  const unit = MODE_COSTS[mode];
-  return totalKm * unit.perKmBn + stopCount * unit.perStationBn;
-}
+import { MODE_COSTS, costBn } from "~/lib/cost-model";
+export { MODE_COSTS, costBn };
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
 

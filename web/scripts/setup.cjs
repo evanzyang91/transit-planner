@@ -57,7 +57,8 @@ if (process.platform === "linux") {
       console.log("✓ lightningcss Linux binary already in place");
     }
   } catch (e) {
-    console.warn("⚠ Could not copy lightningcss binary:", e.message);
+    // `e` is `unknown` in a catch (TS strict + checkJs): only an Error has .message.
+    console.warn("⚠ Could not copy lightningcss binary:", e instanceof Error ? e.message : String(e));
     console.warn("  Tailwind CSS compilation may fail.");
   }
 }

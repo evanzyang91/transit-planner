@@ -4,26 +4,177 @@
 // varies run to run, but "did it call rank_service_areas with order:
 // best_served" does not.
 //
-// Two different places an invariant can be checked (see ../ai-benchmark/run.mjs):
-//   - `expectToolCalls` / `forbidToolCalls`: matched against the `tool_call`
-//     SSE events the client actually receives. Only the 4 WRITE tools
-//     (show_area→highlight_area, draw_corridor, drop_pin, fly_to) ever appear
-//     here, and only when the server actually rendered them.
-//   - `expectTrace` / `forbidTrace`: matched against the Langfuse trace this
-//     run tagged with `benchmarkRunId` (see ToolContext.benchmarkRunId in
-//     web/src/server/map-data/tools.ts). This is the ONLY way to see which
-//     READ tool ran (rank_service_areas, query_population, estimate_ridership,
-//     query_network, describe_location, network_coverage) — those never touch
-//     the client stream at all.
+// Items are stored in Langfuse as JSON (dataset.mjs), so everything here must
+// be plain JSON: no RegExp objects, no undefined, no functions. Re-run
+// dataset.mjs after editing this file — run.mjs reads the items from Langfuse.
+//
+// ── input ───────────────────────────────────────────────────────────────────
+//   { message, networkRoutes?, ui? }                  a one-turn conversation
+//   { turns: [{ message, networkRoutes?, ui? }, …] }  several turns; a turn
+//       without networkRoutes / ui reuses the previous turn's (the browser
+//       sends its live map state with every message). The server is stateless:
+//       run.mjs carries the conversation forward as `history`.
+//   - networkRoutes omitted or [] → the server's default network. A non-empty
+//     array REPLACES that network entirely (it stands for the user's whole map).
+//   - ui → a MapUiSnapshot (web/src/lib/map-assistant-protocol.ts): what the
+//     user currently sees. Layers that aren't listed are off.
+//
+// ── expectedOutput: two different places a check can look (run.mjs) ────────
+//   - `expectToolCalls` / `forbidToolCalls` / `expectToolCallCount` /
+//     `expectArtifactConsistency`: matched against the `tool_call` SSE events
+//     the browser actually receives, by CLIENT name — annotations
+//     (highlight_area, draw_corridor, drop_pin, fly_to) and app actions
+//     (reset_network, set_map_layers, show_isochrone, focus,
+//     set_route_visibility, open_panel, show_simulation, propose_line). Two
+//     server tools are renamed on the way: show_area → highlight_area and
+//     run_simulation → show_simulation. A tool_call only appears when the
+//     server actually rendered / opened it — a rejected write never does.
+//     These look at the LAST turn (expectArtifactConsistency compares turns).
+//   - `expectTrace` / `forbidTrace`: matched against the Langfuse trace of the
+//     last turn — root observation "map-assistant", tagged with
+//     metadata.benchmarkRunId (see ToolContext.benchmarkRunId in
+//     web/src/server/map-data/tools.ts) — by SERVER tool name. This is the
+//     ONLY way to see the arguments of READ tools (rank_service_areas,
+//     query_population, estimate_ridership, query_network, describe_location,
+//     network_coverage, lookup_app_docs): the stream only shows a `status`
+//     progress line for them.
+//
+// Argument filters, usable on any of the expectations above:
+//   - argsMatch: TOP-LEVEL keys must be equal (arrays compared item by item).
+//   - argsContains: deep partial match — objects match on a subset of their
+//     keys; arrays match when every listed item matches SOME actual item, in
+//     any order. (Only the first 30 items of an array are kept — see
+//     compactForLog in conversation.mjs.)
+//
+// textChecks, on the final answer of the last turn (what is left after any
+// text_reset): forbidQuestionMark, forbidNarration, maxSentences, and
+// mustMatch / mustNotMatch: [{ pattern, flags }] — regexes written as strings,
+// because JSON (and so Langfuse) can't store a RegExp. Remember to double the
+// backslashes inside a JS string: "\\d" is the regex \d.
 //
 // 📖 Learn: this is why the runner needs both the SSE parser AND a Langfuse
-// trace lookup per item — the client stream alone is blind to half the tools.
+// trace lookup per item — the client stream alone is blind to what the READ
+// tools were asked.
 
 /** A real, inhabited residential point (Yonge & Eglinton area). */
 const INHABITED_POINT = [-79.4025, 43.7053];
 
 /** A point well out in Lake Ontario — no census population, must be rejected. */
 const LAKE_POINT = [-79.38, 43.6];
+
+// ── Realistic "what the user sees" snapshots (MapUiSnapshot, v: 1) ──────────
+// Shaped like what TransitMap reports. Each viewport's bounds are what
+// map.getBounds() gives for a ~1440×800 px map at that centre and zoom
+// (camera tilt ignored), and neighbourhoodAtCenter is the real City of Toronto
+// neighbourhood containing the centre (checked against
+// public/Neighbourhoods - 4326.geojson).
+
+/** The view the app opens with (TransitMap's TORONTO centre, zoom 11.5). */
+const VIEW_APP_DEFAULT = {
+  center: [-79.3832, 43.6532],
+  zoom: 11.5,
+  bounds: [-79.558, 43.5829, -79.2084, 43.7234],
+  neighbourhoodAtCenter: "Yonge-Bay Corridor",
+};
+
+/** Zoomed out over the whole city — how you'd look at a city-wide heatmap. */
+const VIEW_CITY_WIDE = {
+  center: [-79.3832, 43.7001],
+  zoom: 10.8,
+  bounds: [-79.6671, 43.5859, -79.0993, 43.814],
+  neighbourhoodAtCenter: "Mount Pleasant East",
+};
+
+/** Central Scarborough, where the transit-desert layer has the most to show. */
+const VIEW_SCARBOROUGH = {
+  center: [-79.255, 43.7615],
+  zoom: 12.2,
+  bounds: [-79.3626, 43.7183, -79.1474, 43.8047],
+  neighbourhoodAtCenter: "Bendale-Glen Andrew",
+};
+
+/** Pape → Don Mills & Eglinton, around the user-drawn line below. */
+const VIEW_DON_MILLS_CORRIDOR = {
+  center: [-79.3445, 43.7002],
+  zoom: 12.8,
+  bounds: [-79.4155, 43.6717, -79.2735, 43.7287],
+  neighbourhoodAtCenter: "Thorncliffe Park",
+};
+
+/** Eglinton Avenue East between Don Mills and Kennedy. */
+const VIEW_EGLINTON_EAST = {
+  center: [-79.3017, 43.7262],
+  zoom: 12.6,
+  bounds: [-79.3832, 43.6935, -79.2202, 43.7589],
+  neighbourhoodAtCenter: "Wexford/Maryvale",
+};
+
+/**
+ * A first visit: default view, no overlays on, nothing selected or open,
+ * default network, signed out. Items copy it and change only what their
+ * question depends on, e.g. { ...BASE_UI, layers: [...] }.
+ * 📖 Learn: object spread — `{ ...BASE_UI, layers: x }` copies every key of
+ * BASE_UI, then replaces `layers`; BASE_UI itself is never modified.
+ */
+const BASE_UI = {
+  v: 1,
+  viewport: VIEW_APP_DEFAULT,
+  layers: [],
+  selection: { routeId: null, routeName: null, stopName: null, neighbourhood: null, selectedNeighbourhoods: [] },
+  panels: { simulation: false, plans: false, analysis: false, routePanel: false, council: "closed" },
+  network: {
+    hiddenRouteIds: [],
+    customLines: [],
+    busRoutesLoaded: 0,
+    goTransit: false,
+    planName: null,
+    unsavedChanges: false,
+  },
+  simulation: null,
+  prefs: { dark: false, imperial: false },
+  signedIn: false,
+};
+
+/**
+ * A line the user drew themselves, in the shape the browser sends as
+ * networkRoutes (the server only reads id, name, type and stops). The
+ * "custom-" id prefix is what marks a line as a proposal for the simulation.
+ * Pape and Don Valley use the exact station coordinates from
+ * web/src/app/map/transit-data.ts; Cosburn (Pape Ave & Cosburn Ave) and
+ * Thorncliffe Park (Overlea Blvd) are the real intersections.
+ */
+const RELIEF_LINE_NORTH = {
+  id: "custom-1",
+  name: "Relief Line North",
+  type: "subway",
+  stops: [
+    { name: "Pape", coords: [-79.3449, 43.6798] },
+    { name: "Cosburn", coords: [-79.3487, 43.6893] },
+    { name: "Thorncliffe Park", coords: [-79.3446, 43.7049] },
+    { name: "Don Valley", coords: [-79.338946, 43.719956] },
+  ],
+};
+
+/**
+ * "The draft was already added" claims, for action-draft-line's mustNotMatch.
+ *
+ * Why not one broad /\b(added|created)\b.*\bline\b/i: the HONEST reply to a
+ * draft usually echoes the confirm card — "Nothing has been added yet — click
+ * Add line to keep it" — and that sentence contains "added … line", so the
+ * broad pattern would fail the very answer we want. These three patterns only
+ * catch the claim being made: ['’] accepts both the straight and the curly
+ * apostrophe, which models often write.
+ */
+const CLAIMS_LINE_WAS_ADDED = [
+  // First person, done: "I added…", "I've added…", "I have just created…".
+  { pattern: "\\bI(?:['’]ve| have)?(?: just)? (?:added|created)\\b", flags: "i" },
+  // The line/it as the subject of a finished action: "the line has been
+  // added", "it was created", "it's been added". ("Nothing has been added"
+  // has a different subject, so it doesn't match.)
+  { pattern: "\\b(?:line|it)(?: has been| was| is now|['’]s been) (?:added|created)\\b", flags: "i" },
+  // A sentence that opens with the verb: "Created the Eglinton East line…".
+  { pattern: "(?:^|[.!?]\\s+)(?:added|created)\\b", flags: "i" },
+];
 
 export const BENCHMARK_ITEMS = [
   // ── tool-selection ──────────────────────────────────────────────────────
@@ -167,6 +318,167 @@ export const BENCHMARK_ITEMS = [
       expectTrace: [{ tool: "rank_service_areas", argsMatch: { order: "least_served" } }],
       expectToolCallCount: { name: "highlight_area", min: 2 },
       textChecks: { maxSentences: 2, forbidNarration: true },
+    },
+  },
+
+  // ── app-actions ──────────────────────────────────────────────────────────
+  // Not a map question at all — the model must route it to reset_network
+  // (which only opens the confirm dialog) instead of drawing something or
+  // claiming the wipe already happened.
+  {
+    id: "app-action-reset-wipe",
+    metadata: { category: "app-actions" },
+    input: { message: "Am I able to reset the simulation completely? wiping all the routes and stations?", networkRoutes: [] },
+    expectedOutput: {
+      expectToolCalls: [{ name: "reset_network", argsMatch: { target: "empty" } }],
+      forbidToolCalls: [{ name: "highlight_area" }, { name: "drop_pin" }, { name: "draw_corridor" }],
+    },
+  },
+
+  // ── knowledge ────────────────────────────────────────────────────────────
+  // Answerable only from what the assistant knows about the app plus the `ui`
+  // snapshot of what the user can see. Before the 2026-11 rework it had
+  // neither, so "what is this heatmap?" failed twice over. The answer is text:
+  // nothing needs drawing.
+  {
+    id: "knowledge-heatmap-visible",
+    metadata: {
+      category: "knowledge",
+      notes: "Population Density is the only overlay on; the answer must name it instead of guessing.",
+    },
+    input: {
+      message: "What is the heatmap that I can see on this map?",
+      ui: { ...BASE_UI, viewport: VIEW_CITY_WIDE, layers: [{ id: "population", on: true }] },
+    },
+    expectedOutput: {
+      // [\s-] also accepts "population-density heatmap".
+      textChecks: { mustMatch: [{ pattern: "population[\\s-]density", flags: "i" }] },
+      // Explaining a layer is no reason to shade an area.
+      forbidToolCalls: [{ name: "highlight_area" }],
+    },
+  },
+  {
+    id: "knowledge-two-heatmaps",
+    metadata: {
+      category: "knowledge",
+      notes: "Two overlays with similar colour ramps are on at once — the answer has to explain both.",
+    },
+    input: {
+      message: "what am I looking at?",
+      ui: {
+        ...BASE_UI,
+        viewport: VIEW_SCARBOROUGH,
+        layers: [
+          { id: "serviceHeatmap", on: true },
+          { id: "transitDesert", on: true },
+        ],
+      },
+    },
+    expectedOutput: {
+      textChecks: {
+        mustMatch: [
+          { pattern: "service", flags: "i" },
+          { pattern: "desert", flags: "i" },
+        ],
+      },
+    },
+  },
+  {
+    id: "knowledge-how-to-save",
+    metadata: {
+      category: "knowledge",
+      notes:
+        "Signed out with unsaved changes: Plans needs sign-in; without it, export (GTFS / JSON) or copy the share link.",
+    },
+    input: {
+      message: "How do I save my plan?",
+      ui: { ...BASE_UI, network: { ...BASE_UI.network, unsavedChanges: true }, signedIn: false },
+    },
+    expectedOutput: {
+      textChecks: {
+        mustMatch: [
+          { pattern: "plans", flags: "i" },
+          { pattern: "(export|share)", flags: "i" },
+          // The user is signed out and Plans only works signed in — the one
+          // thing they need to know before clicking Plans.
+          { pattern: "sign(ed)?[ -]?in|log(ged)?[ -]?in", flags: "i" },
+        ],
+      },
+    },
+  },
+
+  // ── app-actions: changing the view ───────────────────────────────────────
+  // View-only actions apply straight away (no confirm), so the tool_call
+  // itself is the evidence.
+  {
+    id: "action-layer-on",
+    metadata: { category: "app-actions", notes: "Every overlay starts off (BASE_UI.layers is empty)." },
+    input: { message: "Turn on the transit desert layer", ui: BASE_UI },
+    expectedOutput: {
+      expectToolCalls: [{ name: "set_map_layers", argsContains: { layers: [{ id: "transitDesert", on: true }] } }],
+    },
+  },
+  {
+    id: "action-focus-route",
+    metadata: {
+      category: "app-actions",
+      notes: "\"line-2\" is Line 2 Bloor–Danforth's id in the server's default network (web/src/app/map/transit-data.ts).",
+    },
+    input: { message: "Show me Line 2 on the map", ui: BASE_UI },
+    expectedOutput: {
+      expectToolCalls: [{ name: "focus", argsContains: { target: "route", routeId: "line-2" } }],
+    },
+  },
+
+  // ── app-actions: the commuter simulation ─────────────────────────────────
+  {
+    id: "action-run-simulation",
+    metadata: {
+      category: "app-actions",
+      notes:
+        "networkRoutes REPLACES the server's default network, so the assistant's map is just this one user-drawn " +
+        "line (custom-1); ui.network.customLines says the same. The simulation compares custom-* lines against " +
+        "the baseline network.",
+    },
+    input: {
+      message: "Run a simulation of my new line",
+      networkRoutes: [RELIEF_LINE_NORTH],
+      ui: {
+        ...BASE_UI,
+        viewport: VIEW_DON_MILLS_CORRIDOR,
+        network: {
+          ...BASE_UI.network,
+          customLines: [{ id: "custom-1", name: "Relief Line North", type: "subway", stops: 4 }],
+          unsavedChanges: true,
+        },
+      },
+    },
+    expectedOutput: {
+      // The server tool is run_simulation; the browser receives show_simulation.
+      expectToolCalls: [{ name: "show_simulation" }],
+      // "…and explain the results": the answer should quote at least one
+      // number from the run (time saved, % who can reach work, …).
+      textChecks: { mustMatch: [{ pattern: "\\d", flags: "" }] },
+    },
+  },
+
+  // ── app-actions: drafting a line (human in the loop) ─────────────────────
+  // propose_line only shows a draft and a confirm card; nothing is added to
+  // the user's network until they click. So the reply must not claim the
+  // line already exists.
+  {
+    id: "action-draft-line",
+    metadata: {
+      category: "app-actions",
+      notes: "Mutating action: the tool_call opens a confirm card, it does not add the line.",
+    },
+    input: {
+      message: "Draft a new subway line along Eglinton Avenue East from Kennedy station to Don Mills",
+      ui: { ...BASE_UI, viewport: VIEW_EGLINTON_EAST, layers: [{ id: "population", on: true }] },
+    },
+    expectedOutput: {
+      expectToolCalls: [{ name: "propose_line", argsContains: { type: "subway" } }],
+      textChecks: { mustNotMatch: CLAIMS_LINE_WAS_ADDED },
     },
   },
 ];

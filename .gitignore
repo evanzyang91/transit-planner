@@ -20,13 +20,6 @@ build/
 .pnpm-store/
 .pnp.*
 
-# Go
-bin/
-*.exe
-*.test
-*.out
-vendor/
-
 # Python
 __pycache__/
 *.py[cod]
@@ -40,9 +33,6 @@ env/
 htmlcov/
 *.egg-info/
 .eggs/
-
-# Prisma / DB generated
-web_db/generated/
 
 # IDE & OS
 .idea/

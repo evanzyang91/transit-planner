@@ -4,7 +4,9 @@
 
 import { getProvider } from "~/server/ai-provider";
 import type { ChatMessage } from "~/server/ai-provider";
-import { buildDocsCorpus } from "~/lib/docs-content";
+// The same knowledge pack the Ask AI map assistant uses (core + every
+// methodology topic), so the two assistants can't contradict each other.
+import { buildDocsCorpus } from "~/lib/project-knowledge";
 
 export type { ChatMessage };
 
@@ -22,10 +24,12 @@ export async function POST(req: Request) {
   // 📖 Learn: RAG — Augmentation step.
   // We inject the full docs corpus into the system prompt. The AI will answer
   // ONLY from this context, which prevents hallucination about our specific app.
+  // (The corpus is small enough — ~7k tokens — to include whole; no retrieval needed.)
   const systemPrompt = `You are a helpful assistant for the Transit Planner documentation.
 Answer questions based ONLY on the documentation provided below.
 Be concise and direct. Use markdown formatting where helpful (bold, bullet lists).
 If something is not covered in the docs, say so clearly rather than guessing.
+You cannot see the user's map. Where the docs list a known issue, describe the app as it behaves today.
 
 ${buildDocsCorpus()}`;
 

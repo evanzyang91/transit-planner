@@ -11,12 +11,19 @@ export function useTraffic(mapRef: RefObject<mapboxgl.Map | null>, mapLoaded: bo
     const [trafficGeoJSON, setTrafficGeoJSON] = useState<GeoJSON.FeatureCollection | null>(null);
         
     useEffect(() => {
-        let cancelled = false;
+        // An AbortController (instead of a plain `cancelled` flag) actually STOPS
+        // the download when this effect is cleaned up. In dev, React StrictMode
+        // mounts → unmounts → re-mounts every component; with a flag, the
+        // throwaway first mount still downloaded the full ~5.6 MB traffic JSON
+        // and held a browser connection, so later requests queued behind it.
+        // 📖 Learn: AbortController — https://developer.mozilla.org/en-US/docs/Web/API/AbortController
+        // 📖 Learn: StrictMode double effects — https://react.dev/reference/react/StrictMode#fixing-bugs-found-by-re-running-effects-in-development
+        const controller = new AbortController();
         setTrafficLoading(true);
-        fetch("/api/traffic")
+        fetch("/api/traffic", { signal: controller.signal })
         .then((res) => res.json())
         .then((fc: GeoJSON.FeatureCollection) => {
-            if (cancelled) return;
+            if (controller.signal.aborted) return;
             console.log("[traffic] API payload", {
             type: fc?.type,
             featureCount: fc?.features?.length ?? 0,
@@ -46,13 +53,18 @@ export function useTraffic(mapRef: RefObject<mapboxgl.Map | null>, mapLoaded: bo
             });
             }
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
+            // Aborting rejects the fetch with an "AbortError". We caused that on
+            // purpose (cleanup), so it isn't a failure worth logging.
+            if (controller.signal.aborted) return;
             console.error("Failed to fetch traffic data:", err);
         })
         .finally(() => {
-            if (!cancelled) setTrafficLoading(false);
+            // An aborted run must not flip loading off: under StrictMode the
+            // second (real) mount's request is still in flight.
+            if (!controller.signal.aborted) setTrafficLoading(false);
         });
-        return () => { cancelled = true; };
+        return () => controller.abort();
     }, []);
 
     

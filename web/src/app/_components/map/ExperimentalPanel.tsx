@@ -21,6 +21,14 @@ import { POPULATION_CENTERS } from "~/app/map/population-centers";
 // lib/ridership-model.ts and lib/network-stats.ts for the "why").
 import { parseHeadway, forecastRouteRidership } from "~/lib/ridership-model";
 import { routeLengthKm } from "~/lib/network-stats";
+import {
+  MODE_COSTS,
+  OPERATING_COST_M_PER_KM_YEAR,
+  alignmentCostBn,
+  costBn,
+  costModeFor,
+  typicalMix,
+} from "~/lib/cost-model";
 
 // ── Scoring ───────────────────────────────────────────────────────────────────
 
@@ -193,10 +201,13 @@ function openReportTab(route: Route, allRoutes: Route[]): void {
   const score = scoreRoute(route, allRoutes);
   const km = routeLengthKm(route);
   const headway = parseHeadway(route.frequency, route.servicePattern);
-  const costPerKm = route.type === "subway" ? 500 : route.type === "lrt" ? 120 : route.type === "go_train" ? 80 : route.type === "streetcar" ? 50 : 8;
-  const totalCost = (km * costPerKm);
+  // Same cost formula as every other panel (lib/cost-model.ts), in $M for this report.
+  const costMode = costModeFor(route.type);
+  const totalCost = Math.round(costBn(km, route.stops.length, costMode) * 1000);
+  const perKmM = Math.round(MODE_COSTS[costMode].perKmBn * 1000);
+  const perStationM = Math.round(MODE_COSTS[costMode].perStationBn * 1000);
   const dailyRidership = Math.round(route.stops.length * (headway < 10 ? 3200 : headway < 20 ? 1800 : 900));
-  const annualOp = Math.round(km * 1.8);
+  const annualOp = Math.round(km * OPERATING_COST_M_PER_KM_YEAR);
   const costRecovery = Math.round((dailyRidership * 365 * 2.5) / (annualOp * 1_000_000) * 100);
   const gc = gradeColor(score.grade);
   const typeName = route.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -268,7 +279,7 @@ function openReportTab(route: Route, allRoutes: Route[]): void {
   </div>
 
   <div class="grid3">
-    <div class="card"><div class="card-label">Est. Capital Cost</div><div class="card-value">$${totalCost >= 1000 ? (totalCost / 1000).toFixed(1) + "B" : totalCost.toLocaleString() + "M"}</div><div class="card-sub">@ $${costPerKm}M per km</div></div>
+    <div class="card"><div class="card-label">Est. Capital Cost</div><div class="card-value">$${totalCost >= 1000 ? (totalCost / 1000).toFixed(1) + "B" : totalCost.toLocaleString() + "M"}</div><div class="card-sub">$${perKmM}M/km + $${perStationM}M/station</div></div>
     <div class="card"><div class="card-label">Daily Ridership</div><div class="card-value">${dailyRidership.toLocaleString()}</div><div class="card-sub">estimated boardings</div></div>
     <div class="card"><div class="card-label">Fare Recovery</div><div class="card-value">${costRecovery}%</div><div class="card-sub">est. at $2.50/trip</div></div>
   </div>
@@ -361,9 +372,10 @@ function openReportTab(route: Route, allRoutes: Route[]): void {
 function computeCostBreakdown(route: Route, tunnelPct: number, elevatedPct: number) {
   const surfacePct = Math.max(0, 100 - tunnelPct - elevatedPct);
   const km = routeLengthKm(route);
-  const base = route.type === "subway" ? 500 : route.type === "lrt" ? 120 : route.type === "go_train" ? 80 : route.type === "streetcar" ? 50 : 8;
-  const blended = base * (surfacePct / 100) + base * 5 * (tunnelPct / 100) + base * 2 * (elevatedPct / 100);
-  return { surfacePct, tunnelPct, elevatedPct, capitalM: km * blended, operatingM: km * 1.8, totalKm: km };
+  // Same formula as every other panel (lib/cost-model.ts); the sliders only re-weight
+  // the track cost, anchored so the line's typical alignment gives the headline number.
+  const capitalBn = alignmentCostBn(km, route.stops.length, costModeFor(route.type), { tunnelPct, elevatedPct });
+  return { surfacePct, tunnelPct, elevatedPct, capitalM: capitalBn * 1000, operatingM: km * OPERATING_COST_M_PER_KM_YEAR, totalKm: km };
 }
 
 // ── Elevation model (rough GTA terrain) ───────────────────────────────────────
@@ -1247,7 +1259,20 @@ export function ExperimentalPanel({
             {tab === "cost" && (
               <div className="space-y-2">
                 <SectionLabel>Select route</SectionLabel>
-                <select value={costRouteId} onChange={(e) => setCostRouteId(e.target.value)} className="w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-xs text-stone-700 outline-none focus:border-stone-400 bg-white">
+                <select
+                  value={costRouteId}
+                  onChange={(e) => {
+                    setCostRouteId(e.target.value);
+                    // Start the sliders at the line's typical alignment (tunnelled subway,
+                    // surface everything else) so the estimate opens on the shared formula.
+                    const picked = routes.find((r) => r.id === e.target.value);
+                    if (picked) {
+                      const mix = typicalMix(costModeFor(picked.type));
+                      setTunnelPct(mix.tunnelPct);
+                      setElevatedPct(mix.elevatedPct);
+                    }
+                  }}
+                  className="w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-xs text-stone-700 outline-none focus:border-stone-400 bg-white">
                   <option value="">— choose —</option>
                   {routes.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
@@ -1517,10 +1542,13 @@ export function ExperimentalPanel({
               </div>
             )}
 
-            {/* ── AI Assistant ── */}
+            {/* ── AI Assistant ──
+                Same conversation as the floating Ask AI card: the chat state
+                lives in MapAssistantProvider, and the live routes reach the
+                server through TransitMap's bridge, so no routes prop here. */}
             {tab === "assistant" && (
               <div className="h-80">
-                <TransitAssistant routes={routes} />
+                <TransitAssistant variant="embedded" />
               </div>
             )}
 

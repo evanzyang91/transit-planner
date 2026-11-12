@@ -155,9 +155,18 @@ export function usePageViewTracker() {
     // ever remove it. replaceState rewrites the URL without a reload and
     // without adding a history entry (back button unaffected).
     // 📖 Learn: history.replaceState — https://developer.mozilla.org/en-US/docs/Web/API/History/replaceState
+    //
+    // Why `window.history.state` and not `{}`: Next.js stores its own router
+    // bookkeeping in history.state (an `__NA` flag plus the route tree). This
+    // effect runs BEFORE Next patches history.replaceState (child effects run
+    // before parent ones), so passing `{}` wiped that bookkeeping. Later,
+    // pressing Back to this entry made Next treat it as a foreign entry and
+    // do a full page reload. Passing the current state back in changes only
+    // the URL, which is all we want here.
+    // 📖 Learn: history.state — https://developer.mozilla.org/en-US/docs/Web/API/History/state
     if (window.location.search) {
       window.history.replaceState(
-        {},
+        window.history.state,
         "",
         `${window.location.pathname}${window.location.hash}`,
       );

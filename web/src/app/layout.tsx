@@ -91,7 +91,13 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Display:wght@400;500;700&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
       </head>
-      <body>
+      {/* suppressHydrationWarning: browser extensions (Grammarly, ColorZilla,
+          password managers…) add attributes to <body> before React hydrates,
+          which React would report as a server/client mismatch. Like the one
+          on <html> above, it only silences attribute differences on this one
+          element, not on anything inside it.
+          📖 Learn: suppressHydrationWarning — https://react.dev/reference/react-dom/client/hydrateRoot#suppressing-unavoidable-hydration-mismatch-errors */}
+      <body suppressHydrationWarning>
         <Auth0Provider>
           <MixpanelInit />
           <PageViewTracker />

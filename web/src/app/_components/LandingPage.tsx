@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, Suspense, useMemo } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
@@ -173,11 +173,76 @@ function Scene({ isDark }: { isDark: boolean }) {
   );
 }
 
+// ── Hero entrance animation (pure CSS) ───────────────────────────────────────
+// Before, the hero text started at opacity 0 and only appeared once a
+// useEffect flipped a `visible` state flag. So until React hydrated (about 1s
+// on a slow device) the server-rendered page looked half-built. A CSS keyframe
+// animation runs as soon as the HTML is painted, with or without JavaScript.
+//
+// - `backwards` applies the "from" frame during each element's
+//   animation-delay, then hands back to the element's own styles at the end.
+// - The CTA uses `landing-slide-up` (transform only), so it keeps its
+//   opacity 0.9 and stays visible and clickable from the very first paint.
+// - Each element sets its own delay inline (`animationDelay`). An inline style
+//   beats the class's default delay of 0s.
+// - Users who ask their OS for reduced motion get no animation at all.
+// 📖 Learn: CSS @keyframes & animation-fill-mode — https://developer.mozilla.org/en-US/docs/Web/CSS/animation-fill-mode
+// 📖 Learn: prefers-reduced-motion — https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion
+const HERO_ENTRANCE_CSS = `
+@keyframes landing-fade-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes landing-slide-up {
+  from { transform: translateY(18px); }
+  to   { transform: translateY(0); }
+}
+.landing-fade-up  { animation: landing-fade-up 1s ease backwards; }
+.landing-slide-up { animation: landing-slide-up 1s ease backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .landing-fade-up, .landing-slide-up { animation: none; }
+}
+`;
+
+// ── "Start Mapping" label with a loading state ───────────────────────────────
+// In dev, Next compiles /map on demand on the first click (around 3s) and
+// never prefetches, so the button used to look dead. This label switches to
+// "Loading map…" plus a spinner the moment the click registers. In
+// production /map is prefetched, so navigation is near-instant and the
+// pending state is barely (if ever) visible.
+// 📖 Learn: useLinkStatus — it reads the state of the nearest PARENT <Link>,
+// so this component only works when rendered INSIDE <Link>. `pending` is true
+// from the click until the new route has rendered.
+// https://nextjs.org/docs/app/api-reference/functions/use-link-status
+function StartMappingLabel() {
+  const { pending } = useLinkStatus();
+
+  if (pending) {
+    return (
+      <span className="flex items-center gap-3" aria-busy="true">
+        Loading map…
+        {/* Same ring-spinner style used elsewhere in the app. Reduced-motion
+            users get a gentle pulse instead of a spin. */}
+        <span
+          aria-hidden="true"
+          className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white motion-safe:animate-spin motion-reduce:animate-pulse"
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-3" aria-busy="false">
+      Start Mapping
+      <span aria-hidden="true" style={{ color: "white", fontWeight: 700 }}>→</span>
+    </span>
+  );
+}
+
 // ── Landing page ──────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
-  const [visible, setVisible] = useState(false);
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
@@ -192,26 +257,24 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
+    // `ready` gates the three.js <Canvas>, which can only render in the browser.
     setReady(true);
-    const t = setTimeout(() => setVisible(true), 60);
-    // Prefetch map page JS bundle + heavy data assets
+    // Warm up the /map route's code. This only does something in production;
+    // Next skips prefetching in dev.
+    // We used to ALSO fetch the map's data here (/api/population, /api/traffic,
+    // the neighbourhoods GeoJSON) to "warm it up". That did more harm than good:
+    // the API responses can't be reused from the browser cache, and the bodies
+    // were never read, so each request held a connection open. /map then
+    // queued its real requests behind them, with stalls of up to 5s.
     router.prefetch("/map");
-    void Promise.allSettled([
-      fetch("/Neighbourhoods - 4326.geojson"),
-      fetch("/api/population"),
-      fetch("/api/traffic"),
-    ]);
-    return () => clearTimeout(t);
   }, [router]);
-
-  const fadeUp = (delay: string) => ({
-    opacity: visible ? 1 : 0,
-    transform: visible ? "translateY(0)" : "translateY(18px)",
-    transition: `opacity 1s ease ${delay}, transform 1s ease ${delay}`,
-  });
 
   return (
     <main className={`overflow-x-hidden font-sans ${isDark ? 'bg-gray-900' : 'bg-white'}`}>
+      {/* Keyframes for the hero entrance (see HERO_ENTRANCE_CSS). This sits
+          before the hero in the HTML, so the browser knows the animation
+          before it paints the text. */}
+      <style dangerouslySetInnerHTML={{ __html: HERO_ENTRANCE_CSS }} />
 
       {/* ── Globe hero — clipped with rounded bottom corners ─────────────── */}
       {/* overflow:hidden + border-radius clips the canvas and overlay inside this box */}
@@ -272,7 +335,7 @@ export default function LandingPage() {
 
           {/* Title */}
           <h1
-            className="mb-3 select-none text-center leading-none text-stone-800 dark:text-stone-100"
+            className="landing-fade-up mb-3 select-none text-center leading-none text-stone-800 dark:text-stone-100"
             style={{
               fontFamily: '"Google Sans Display", "Google Sans", sans-serif',
               fontWeight: 700,
@@ -280,29 +343,29 @@ export default function LandingPage() {
               letterSpacing: "-0.04em",
               lineHeight: "0.9",
               filter: "url(#round-text)",
-              ...fadeUp("0.2s"),
+              animationDelay: "0.2s",
             }}
           >
             Transit Planner
           </h1>
           <p
-            className="mb-6 select-none text-center font-normal text-stone-500 dark:text-stone-200"
-            style={{ fontSize: "clamp(1.7rem, 4vw, 2.6rem)", ...fadeUp("0.28s") }}
+            className="landing-fade-up mb-6 select-none text-center font-normal text-stone-500 dark:text-stone-200"
+            style={{ fontSize: "clamp(1.7rem, 4vw, 2.6rem)", animationDelay: "0.28s" }}
           >
             Plan at scale. Visualize city data in seconds.
           </p>
 
-          {/* CTA button — matches map's "Generate Route" style */}
+          {/* CTA button — matches map's "Generate Route" style.
+              Its label shows "Loading map…" while the navigation is pending. */}
           <Link
             href="/map"
-            className="mt-6 flex h-[72px] items-center gap-3 rounded-xl border border-stone-900 bg-stone-900 px-7 text-xl font-normal text-white shadow-sm transition-all hover:bg-stone-800"
-            style={{ ...fadeUp("0.35s"), opacity: 0.9, backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
+            className="landing-slide-up mt-6 flex h-[72px] items-center gap-3 rounded-xl border border-stone-900 bg-stone-900 px-7 text-xl font-normal text-white shadow-sm transition-all hover:bg-stone-800"
+            style={{ opacity: 0.9, backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", animationDelay: "0.35s" }}
           >
-            Start Mapping
-            <span style={{color: "white", fontWeight: 700}}>→</span>
+            <StartMappingLabel />
           </Link>
 
-          <div className="mt-4 flex items-center gap-4" style={{ ...fadeUp("0.45s") }}>
+          <div className="landing-fade-up mt-4 flex items-center gap-4" style={{ animationDelay: "0.45s" }}>
             <Link
               href="/about"
               className="text-xs text-stone-400 underline-offset-2 transition-colors hover:text-stone-600 hover:underline"
