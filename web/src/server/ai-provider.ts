@@ -87,7 +87,7 @@ export interface AIProvider {
   ): AsyncGenerator<string, void, unknown>;
 
   // Stateless call: pass a system prompt + full message history directly.
-  // Used by docs-chat, /api/ai/message and the plain (non-map) /api/ai/chat.
+  // Used by docs-chat and the plain (non-map) /api/ai/chat.
   streamDirect(
     system: string,
     messages: ChatMessage[],
