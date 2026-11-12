@@ -4,17 +4,35 @@
 // It runs in the browser, so we can use useState/useEffect and access `window`.
 
 import { useEffect, useState } from "react";
+import {
+  rememberMobileWarningDismissed,
+  shouldShowMobileWarning,
+  wasMobileWarningDismissed,
+} from "./mobile-warning";
+
+// Passed to the helpers as a function so that reading `window.sessionStorage`
+// (which can throw when storage is blocked) happens inside their try block.
+const getSessionStorage = () => window.sessionStorage;
 
 export default function MobileWarningModal() {
   // Start hidden — we don't know the screen size until the browser runs this code.
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    // 768px = Tailwind's `md` breakpoint. Below this, we consider it "mobile".
-    if (window.innerWidth < 768) {
+    // Narrow screen (below Tailwind's `md`, 768px) AND not already dismissed
+    // in this tab → show. The rules live in ./mobile-warning so they're tested.
+    const dismissedThisSession = wasMobileWarningDismissed(getSessionStorage);
+    if (shouldShowMobileWarning(window.innerWidth, dismissedThisSession)) {
       setShow(true);
     }
   }, []); // Empty deps = run once on mount
+
+  function handleContinueAnyway() {
+    // Remember the choice for this browser-tab session, so later page loads
+    // (a refresh, a hard navigation) don't cover the page with the overlay again.
+    rememberMobileWarningDismissed(getSessionStorage);
+    setShow(false);
+  }
 
   if (!show) return null;
 
@@ -47,7 +65,7 @@ export default function MobileWarningModal() {
         </p>
 
         <button
-          onClick={() => setShow(false)}
+          onClick={handleContinueAnyway}
           className="w-full rounded-xl bg-blue-500 py-2.5 text-sm font-semibold text-white hover:bg-blue-600 active:bg-blue-700"
         >
           Continue anyway
