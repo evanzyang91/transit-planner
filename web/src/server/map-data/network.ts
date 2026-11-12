@@ -19,8 +19,27 @@ import { SpatialGrid } from "./spatial-grid";
 export interface NetRoute {
   id: string;
   name: string;
+  /**
+   * Badge text, e.g. "1" for Line 1 or "501" for the Queen streetcar. Optional:
+   * older clients don't send it. Lets the assistant resolve "Line 1" or "the
+   * 504" to a route (the names alone are just "Yonge–University", "King").
+   */
+  shortName?: string;
   type: string;
   stops: Array<{ name: string; coords: [number, number] }>;
+}
+
+/**
+ * How a line is named to the model and the user, the way the app labels it:
+ * "Line 1 Yonge–University" (subway/LRT), "501 Queen" (others with a badge),
+ * or just the name for custom lines (their auto badges like "RL" add nothing).
+ * Shared by the prompt's route list and the action tools, so both use the
+ * same words.
+ */
+export function routeDisplayName(route: Pick<NetRoute, "id" | "name" | "shortName" | "type">): string {
+  if (route.id.startsWith("custom-") || !route.shortName) return route.name;
+  if (route.type === "subway" || route.type === "lrt") return `Line ${route.shortName} ${route.name}`;
+  return `${route.shortName} ${route.name}`;
 }
 
 /** One stop flattened out of its route, for network-wide spatial queries. */
@@ -43,6 +62,7 @@ export interface LiveNetwork {
 // untrusted: clamp sizes and drop anything that isn't a plausible coordinate.
 const MAX_ROUTES = 300;
 const MAX_STOPS_PER_ROUTE = 400;
+const MAX_SHORT_NAME_CHARS = 20;
 
 function asCoords(raw: unknown): [number, number] | null {
   if (!Array.isArray(raw) || raw.length < 2) return null;
@@ -55,7 +75,11 @@ function asCoords(raw: unknown): [number, number] | null {
 }
 
 function sanitizeRoutes(raw: unknown): NetRoute[] | null {
-  if (!Array.isArray(raw) || raw.length === 0) return null;
+  // Missing → fall back to the static network. An explicit [] is a real state
+  // (the user wiped the map via Reset → Empty map), so it must stay empty —
+  // otherwise the assistant would still "see" every TTC line after a wipe.
+  if (!Array.isArray(raw)) return null;
+  if (raw.length === 0) return [];
   const routes: NetRoute[] = [];
   for (const r of raw.slice(0, MAX_ROUTES)) {
     if (typeof r !== "object" || r === null) continue;
@@ -70,9 +94,12 @@ function sanitizeRoutes(raw: unknown): NetRoute[] | null {
       stops.push({ name: so.name, coords });
     }
     if (stops.length === 0) continue;
+    const shortName = typeof o.shortName === "string" ? o.shortName.trim().slice(0, MAX_SHORT_NAME_CHARS) : "";
     routes.push({
       id: typeof o.id === "string" ? o.id : `route-${routes.length}`,
       name: o.name,
+      // Only set when the client sent one, so routes stay minimal otherwise.
+      ...(shortName ? { shortName } : {}),
       type: typeof o.type === "string" ? o.type : "bus",
       stops,
     });
@@ -84,6 +111,7 @@ function staticRoutes(): NetRoute[] {
   return [...ROUTES, ...BUS_ROUTES, ...GO_TRAIN_ROUTES].map((r) => ({
     id: r.id,
     name: r.name,
+    shortName: r.shortName,
     type: r.type,
     stops: r.stops.map((s) => ({ name: s.name, coords: s.coords })),
   }));

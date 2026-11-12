@@ -1,6 +1,7 @@
 import { type Metadata } from "next";
 import { TransitMap } from "~/app/_components/TransitMap";
 import { AIAnnotationsProvider } from "~/app/_components/map/AIAnnotationsContext";
+import { MapAssistantProvider } from "~/app/_components/map/MapAssistantContext";
 
 export const metadata: Metadata = {
   title: "Map Editor",
@@ -11,8 +12,13 @@ export const metadata: Metadata = {
 export default function MapPage() {
   return (
     <main className="h-screen w-screen overflow-hidden">
+      {/* Order matters: the assistant draws through the annotations context,
+          and TransitMap registers its bridge with the assistant, so each
+          provider wraps everything that uses it. */}
       <AIAnnotationsProvider>
-        <TransitMap />
+        <MapAssistantProvider>
+          <TransitMap />
+        </MapAssistantProvider>
       </AIAnnotationsProvider>
     </main>
   );

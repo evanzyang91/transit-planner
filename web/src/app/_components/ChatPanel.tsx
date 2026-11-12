@@ -230,14 +230,16 @@ const CARD_STYLE: React.CSSProperties = {
   boxShadow: "none",
 };
 
+// `children?` (optional): react-markdown's Components type passes element props
+// whose children may be absent (e.g. an empty paragraph), so a required prop doesn't type-check.
 const MD = {
-  p: ({ children }: { children: React.ReactNode }) => <p className="mb-0.5 last:mb-0">{children}</p>,
-  strong: ({ children }: { children: React.ReactNode }) => <strong className="font-semibold text-stone-700">{children}</strong>,
-  li: ({ children }: { children: React.ReactNode }) => <li className="ml-3 list-disc">{children}</li>,
-  ul: ({ children }: { children: React.ReactNode }) => <ul className="mb-0.5">{children}</ul>,
-  h1: ({ children }: { children: React.ReactNode }) => <p className="font-semibold text-stone-700">{children}</p>,
-  h2: ({ children }: { children: React.ReactNode }) => <p className="font-semibold text-stone-600">{children}</p>,
-  h3: ({ children }: { children: React.ReactNode }) => <p className="font-medium text-stone-600">{children}</p>,
+  p: ({ children }: { children?: React.ReactNode }) => <p className="mb-0.5 last:mb-0">{children}</p>,
+  strong: ({ children }: { children?: React.ReactNode }) => <strong className="font-semibold text-stone-700">{children}</strong>,
+  li: ({ children }: { children?: React.ReactNode }) => <li className="ml-3 list-disc">{children}</li>,
+  ul: ({ children }: { children?: React.ReactNode }) => <ul className="mb-0.5">{children}</ul>,
+  h1: ({ children }: { children?: React.ReactNode }) => <p className="font-semibold text-stone-700">{children}</p>,
+  h2: ({ children }: { children?: React.ReactNode }) => <p className="font-semibold text-stone-600">{children}</p>,
+  h3: ({ children }: { children?: React.ReactNode }) => <p className="font-medium text-stone-600">{children}</p>,
 };
 
 // ── Score card ────────────────────────────────────────────────────────────────

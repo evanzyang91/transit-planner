@@ -13,6 +13,13 @@ import "server-only";
  *    via `show_area` and the server resolves the real geometry.
  *  • Pins/corridors may use model coordinates, but every point is validated
  *    (city bbox + inhabited land) and corridors are road-snapped server-side.
+ *  • APP ACTIONS (view control, the commuter simulation, draft lines) are
+ *    validated in ./tools-actions.ts. They only change what is shown, or open
+ *    a confirm UI (Reset dialog, draft-line card) — never the user's data.
+ *
+ * Definitions are plain JSON Schema with no provider-specific code, so the
+ * same registry can later be served to other agent runtimes (e.g. over MCP)
+ * without rewriting it.
  *
  * 📖 Learn: this "artifact/reference" pattern is how you make hallucination
  * structurally impossible for a class of outputs — the model chooses among
@@ -22,6 +29,14 @@ import "server-only";
 import { haversineKm } from "~/app/map/geo-utils";
 import { POPULATION_CENTERS } from "~/app/map/population-centers";
 import { snapToRoads } from "~/lib/road-snap";
+import {
+  LINE_TYPES,
+  PANEL_IDS,
+  TOGGLEABLE_LAYER_IDS,
+  parseAppAction,
+  type MapUiSnapshot,
+} from "~/lib/map-assistant-protocol";
+import { LOOKUP_TOPICS, OVERLAY_CATALOG, isLookupTopic, lookupKnowledge } from "~/lib/project-knowledge";
 import {
   gravityDailyBoardings,
   DEFAULT_WALK_RADIUS_KM,
@@ -43,7 +58,20 @@ import {
 } from "./city-neighbourhoods";
 import { getTorontoRaster, populationInRadius, densestBlocks, catchmentPopulation, populationServedByNetwork } from "./census";
 import { rankServiceAreas, DEFAULT_GAP_THRESHOLD_KM, type AreaArtifact, type RankOrder } from "./gaps";
+import { isInhabited } from "./inhabited";
 import type { LiveNetwork } from "./network";
+import {
+  CHAT_SIM_AGENTS,
+  DRAFT_SPACING_KM,
+  DRAFT_STOP_LIMITS,
+  resolveFocus,
+  resolveOpenPanel,
+  resolveProposeLine,
+  resolveRunSimulation,
+  resolveSetMapLayers,
+  resolveSetRouteVisibility,
+  resolveShowIsochrone,
+} from "./tools-actions";
 
 // ── Per-request context ───────────────────────────────────────────────────────
 
@@ -60,6 +88,10 @@ export class ArtifactStore {
   get(id: string): AreaArtifact | undefined {
     return this.areas.get(id.trim().toLowerCase());
   }
+  /** Drop one id (e.g. when the turn that computed it was trimmed from the history). */
+  forget(id: string): void {
+    this.areas.delete(id.trim().toLowerCase());
+  }
   get knownIds(): string[] {
     return [...this.areas.keys()];
   }
@@ -69,11 +101,18 @@ export interface ToolContext {
   network: LiveNetwork;
   artifacts: ArtifactStore;
   /**
-   * Per-request system prompt override. The map assistant's prompt embeds
-   * live-network stats, so it must be rebuilt every turn — it can't live on
-   * the provider's stored assistant (which is created once per conversation).
+   * What the user currently sees (sanitizeUiSnapshot output), or null/absent
+   * when the client didn't send one. Action tools read it to give accurate
+   * notes ("that layer was already on", "the Plans panel needs sign-in").
    */
-  systemPrompt?: string;
+  ui?: MapUiSnapshot | null;
+  /**
+   * Aborted when the client disconnects — long tools (run_simulation) check it
+   * so an abandoned request doesn't keep working.
+   */
+  signal?: AbortSignal;
+  // (The old `systemPrompt` field is gone: the prompt is built separately by
+  // prompt.ts buildMapAssistantPrompt and handed to the provider directly.)
   /**
    * Set only by the automated benchmark script (scripts/ai-benchmark/run.mjs).
    * Recorded on the turn's Langfuse trace so the runner can look the trace back
@@ -101,17 +140,8 @@ function asBBox(raw: unknown): BBox | null {
   return nums as BBox;
 }
 
-/**
- * "Is this a place people live?" — raster-grounded, replacing the old
- * <8-km-from-a-population-centre heuristic (which passed for spots well out
- * in the lake near downtown). Census blocks only exist where people live, so
- * zero population within 1 km ⇒ water / empty land.
- */
-async function isInhabited(point: [number, number]): Promise<boolean | null> {
-  const raster = await getTorontoRaster();
-  if (!raster) return null; // unknown — callers should not hard-fail on this
-  return raster.grid.within(point, 1.0).some((b) => b.population > 0);
-}
+// isInhabited (the raster "do people live here?" check) moved to ./inhabited.ts
+// so the app-action resolvers in ./tools-actions.ts can share it.
 
 // ── READ tool definitions ─────────────────────────────────────────────────────
 
@@ -238,6 +268,24 @@ export const NETWORK_COVERAGE_TOOL: ToolDefinition = {
   },
 };
 
+export const LOOKUP_APP_DOCS_TOOL: ToolDefinition = {
+  name: "lookup_app_docs",
+  description:
+    "Read the app's own methodology notes on ONE topic before explaining how a number is calculated or " +
+    "where data comes from (formulas, thresholds, data sources, cost models, the simulation, the council, " +
+    "privacy, roadmap, tech stack). Not needed for what APP KNOWLEDGE already covers (layers, buttons, how-tos). " +
+    "Topics: coverage_and_gaps (coverage share, gap ranking, population served), ridership_model, route_score, " +
+    "costs (why panels disagree), simulation, council, transit_desert, population_data, live_data, privacy, " +
+    "roadmap (and changelog), tech_stack.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      topic: { type: "string", enum: [...LOOKUP_TOPICS], description: "The one topic to read." },
+    },
+    required: ["topic"],
+  },
+};
+
 export const READ_TOOLS: ToolDefinition[] = [
   RANK_SERVICE_AREAS_TOOL,
   QUERY_POPULATION_TOOL,
@@ -245,7 +293,10 @@ export const READ_TOOLS: ToolDefinition[] = [
   QUERY_NETWORK_TOOL,
   DESCRIBE_LOCATION_TOOL,
   NETWORK_COVERAGE_TOOL,
+  LOOKUP_APP_DOCS_TOOL,
 ];
+
+export const READ_TOOL_NAMES = new Set(READ_TOOLS.map((t) => t.name));
 
 // ── WRITE tool definitions (hybrid geometry policy) ───────────────────────────
 
@@ -318,16 +369,224 @@ export const FLY_TO_TOOL: ToolDefinition = {
   },
 };
 
+/**
+ * The first WRITE tool that touches real project data rather than drawing an
+ * annotation. It never deletes anything itself: it only OPENS the app's
+ * existing Reset confirmation dialog, and the user has to click Reset. That
+ * human-in-the-loop step is deliberate — an LLM misreading "clear the map"
+ * must not be able to destroy unsaved work.
+ */
+export const RESET_NETWORK_TOOL: ToolDefinition = {
+  name: "reset_network",
+  description:
+    "Open the app's Reset confirmation dialog when the user asks to reset, wipe, clear out or " +
+    "start over with their project's routes and stations. target='empty' removes EVERY route " +
+    "and station (blank map); target='default' restores the original TTC network. Nothing is " +
+    "deleted until the user clicks Reset in the dialog, and they can switch target there. " +
+    "Do NOT use this to remove your own shading/pins/corridors.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      target: {
+        type: "string",
+        enum: ["empty", "default"],
+        description:
+          "'empty' for wipe/delete everything/blank map/from scratch; 'default' for restore/back to the original network.",
+      },
+    },
+    required: ["target"],
+  },
+};
+
+// ── APP ACTION definitions (view control, simulation, draft lines) ───────────
+// Schemas stick to the JSON-Schema subset BOTH providers accept: string enums
+// only (no numeric enums), no anyOf/oneOf, no additionalProperties, every
+// object with at least one property. Gemini's function-declaration schema
+// rejects the rest. Ranges the schema can't express are stated in the
+// description and enforced by the resolver (tools-actions.ts).
+
+/** "population = Population Density; traffic = Traffic; …" — built from the catalogue so labels can't drift. */
+const TOGGLEABLE_LAYER_GLOSSARY = TOGGLEABLE_LAYER_IDS.map((id) => `${id} = ${OVERLAY_CATALOG[id].label}`).join("; ");
+
+export const SET_MAP_LAYERS_TOOL: ToolDefinition = {
+  name: "set_map_layers",
+  description:
+    "Switch map overlays on or off — use when the user asks to show, hide, turn on or off a layer or heatmap. " +
+    `View only; nothing in the plan changes. Ids: ${TOGGLEABLE_LAYER_GLOSSARY} (aiFindings = your own drawings). ` +
+    "Travel-time areas use show_isochrone instead.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      layers: {
+        type: "array",
+        minItems: 1,
+        maxItems: 10,
+        description: "Each overlay to change.",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string", enum: [...TOGGLEABLE_LAYER_IDS] },
+            on: { type: "boolean", description: "true = switch on, false = switch off." },
+          },
+          required: ["id", "on"],
+        },
+      },
+    },
+    required: ["layers"],
+  },
+};
+
+export const SHOW_ISOCHRONE_TOOL: ToolDefinition = {
+  name: "show_isochrone",
+  description:
+    "Show how far someone can get from one point within 15, 30, 45 or 60 minutes by walking, cycling or driving " +
+    "(Mapbox isochrone — transit is NOT modelled). Use for 'how far can I walk from X', 'show the 30-minute area " +
+    "around this station'. Get the origin's real coordinate first (describe_location, query_network nearest_stop). " +
+    "clear: true removes the current one. View only.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      origin: { ...POINT_SCHEMA, description: "[longitude, latitude] of the starting point, inside Toronto." },
+      minutes: { type: "integer", description: "Travel-time budget: 15, 30, 45 or 60 (default 30)." },
+      mode: { type: "string", enum: ["walking", "cycling", "driving"], description: "Default walking." },
+      clear: { type: "boolean", description: "true = remove the current isochrone (other fields are ignored)." },
+    },
+  },
+};
+
+export const FOCUS_TOOL: ToolDefinition = {
+  name: "focus",
+  description:
+    "Select a transit line (the map moves to it and its Route panel opens) or move the map to a neighbourhood. " +
+    "Use for 'show me / zoom to / focus on / open Line 2', 'take me to Leaside'. Lines must be in the user's plan " +
+    "(the route list in the request context has their names and ids). View only.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      target: { type: "string", enum: ["route", "neighbourhood"] },
+      name: {
+        type: "string",
+        description:
+          "For a route: its name, badge or id ('Line 1', '504', 'King', 'custom-2'). For a neighbourhood: one of " +
+          "Toronto's 158 neighbourhoods or a former borough ('Leaside-Bennington', 'Scarborough').",
+      },
+    },
+    required: ["target", "name"],
+  },
+};
+
+export const SET_ROUTE_VISIBILITY_TOOL: ToolDefinition = {
+  name: "set_route_visibility",
+  description:
+    "Show or hide transit lines on the map — use for 'hide the streetcars', 'only show the subway', 'show the 95 bus'. " +
+    "View only: hidden lines stay in the plan and still count in every measure (hidden lines are saved with plans). " +
+    "Accepts any line in the plan, plus any TTC bus route by number — showing a bus route that isn't loaded only draws it.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      routes: {
+        type: "array",
+        items: { type: "string" },
+        minItems: 1,
+        maxItems: 30,
+        description: "Line names, badges or ids, e.g. ['Line 4', '501', 'custom-0'].",
+      },
+      visible: { type: "boolean", description: "true = show, false = hide." },
+    },
+    required: ["routes", "visible"],
+  },
+};
+
+export const OPEN_PANEL_TOOL: ToolDefinition = {
+  name: "open_panel",
+  description:
+    "Open a side panel, or close them with 'none' — use for 'open the simulation panel', 'show my saved plans', " +
+    "'open the analysis tools', 'close the panels'. simulation = Simulate panel (opening it does not run anything — " +
+    "use run_simulation for that); plans = Plans (saved plans, needs sign-in); analysis = Analysis panel (20 tools).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      panel: { type: "string", enum: [...PANEL_IDS] },
+    },
+    required: ["panel"],
+  },
+};
+
+export const RUN_SIMULATION_TOOL: ToolDefinition = {
+  name: "run_simulation",
+  description:
+    "Run the commuter simulation on the server — the same engine as the Simulate panel — comparing the built-in TTC " +
+    "network with the user's custom lines (lines they drew or the council added). Use when the user asks to run, test " +
+    "or simulate their network or a new line, or how a proposal would perform. Takes a few seconds: call it at most " +
+    "once per request. The results open in the Simulate panel and come back to you as a summary to explain.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      agents: {
+        type: "integer",
+        description: `Simulated commuters, ${CHAT_SIM_AGENTS.min}–${CHAT_SIM_AGENTS.max} (default ${CHAT_SIM_AGENTS.default}; about 2 s per 500).`,
+      },
+    },
+  },
+};
+
+export const PROPOSE_LINE_TOOL: ToolDefinition = {
+  name: "propose_line",
+  description:
+    "Draft a NEW transit line for the user to review — use when they ask you to add, build, propose or sketch a line " +
+    "between places. Fetch real stop coordinates first (describe_location, query_network, query_population's densest " +
+    `blocks). The server checks the stops (inside Toronto, on inhabited land, ${DRAFT_SPACING_KM.min}–${DRAFT_SPACING_KM.max} km ` +
+    "apart, in travel order, no duplicates), computes length, population served and cost, and shows a draft with a " +
+    "confirm card. NOTHING is added until the user clicks 'Add to map'. For a quick drawing only, use draw_corridor.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "Line name, e.g. 'Eglinton East LRT'." },
+      type: { type: "string", enum: [...LINE_TYPES] },
+      stops: {
+        type: "array",
+        minItems: DRAFT_STOP_LIMITS.min,
+        maxItems: DRAFT_STOP_LIMITS.max,
+        description: "Stops in travel order, each with a REAL coordinate you fetched with a tool.",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Station name, e.g. the cross street." },
+            coords: POINT_SCHEMA,
+          },
+          required: ["name", "coords"],
+        },
+      },
+      color: { type: "string", description: "Optional hex colour like #14b8a6 (default depends on the type)." },
+      rationale: { type: "string", description: "One sentence on why this line, shown on the confirm card." },
+    },
+    required: ["name", "type", "stops"],
+  },
+};
+
 export const WRITE_TOOLS: ToolDefinition[] = [
   SHOW_AREA_TOOL,
   DRAW_CORRIDOR_TOOL,
   DROP_PIN_TOOL,
   FLY_TO_TOOL,
+  RESET_NETWORK_TOOL,
+  SET_MAP_LAYERS_TOOL,
+  SHOW_ISOCHRONE_TOOL,
+  FOCUS_TOOL,
+  SET_ROUTE_VISIBILITY_TOOL,
+  OPEN_PANEL_TOOL,
+  RUN_SIMULATION_TOOL,
+  PROPOSE_LINE_TOOL,
 ];
 
 export const WRITE_TOOL_NAMES = new Set(WRITE_TOOLS.map((t) => t.name));
 
-/** The full map-assistant toolset. */
+/**
+ * The full map-assistant toolset, in a FIXED order (reads, then writes/actions).
+ * Why it matters: tool definitions are the first part of the prompt prefix the
+ * provider caches, so the list must be byte-identical on every request — built
+ * once from module constants, never per request.
+ */
 export const MAP_TOOLS: ToolDefinition[] = [...READ_TOOLS, ...WRITE_TOOLS];
 
 // ── READ tool execution ───────────────────────────────────────────────────────
@@ -496,6 +755,13 @@ async function runNetworkCoverage(args: Record<string, unknown>, ctx: ToolContex
   };
 }
 
+function runLookupAppDocs(args: Record<string, unknown>) {
+  if (!isLookupTopic(args.topic)) {
+    return { error: `Unknown topic '${String(args.topic)}'. Valid topics: ${LOOKUP_TOPICS.join(", ")}.` };
+  }
+  return { topic: args.topic, text: lookupKnowledge(args.topic) };
+}
+
 /** Execute any READ tool by name. Errors are returned as data (fed back to the model). */
 export async function runReadTool(
   name: string,
@@ -511,6 +777,7 @@ export async function runReadTool(
     case "query_network": return runQueryNetwork(args, ctx);
     case "describe_location": return runDescribeLocation(args, ctx);
     case "network_coverage": return runNetworkCoverage(args, ctx);
+    case "lookup_app_docs": return runLookupAppDocs(args);
     default: return { error: `unknown read tool: ${name}` };
   }
 }
@@ -523,9 +790,23 @@ export async function runReadTool(
  *    event AND acknowledge to the model.
  *  • rejected — nothing is drawn; `error` goes back to the model as the
  *    tool_result so it can correct itself (instead of silently believing it drew).
+ *
+ * `modelNote` (optional) rides along in the model's tool_result when
+ * "rendered_on_map" alone would mislead it — e.g. reset_network only opens a
+ * dialog, so the model must not tell the user their map is already wiped.
+ *
+ * `modelData` (optional) is data the MODEL needs from an action, kept separate
+ * from what the browser gets: run_simulation sends the full panel result to
+ * the browser (clientArgs, ~1 MB) but only a compact summary to the model.
  */
 export type WriteResolution =
-  | { status: "rendered"; clientName: string; clientArgs: Record<string, unknown> }
+  | {
+      status: "rendered";
+      clientName: string;
+      clientArgs: Record<string, unknown>;
+      modelNote?: string;
+      modelData?: unknown;
+    }
   | { status: "rejected"; error: string };
 
 const SEVERITY_COLOR: Record<string, string> = {
@@ -691,6 +972,27 @@ function resolveFlyTo(args: Record<string, unknown>): WriteResolution {
   };
 }
 
+function resolveResetNetwork(args: Record<string, unknown>, ctx: ToolContext): WriteResolution {
+  // Validated with the shared protocol's parser — the same check the browser
+  // runs on this event, so server and client can't disagree on valid targets.
+  if (parseAppAction("reset_network", args) === null) {
+    return { status: "rejected", error: "reset_network requires target: 'empty' or 'default'." };
+  }
+  // Grounded against the live network the client sent: wiping an already
+  // empty map is a no-op, so tell the model instead of popping a pointless dialog.
+  if (args.target === "empty" && ctx.network.stats.routeCount === 0) {
+    return { status: "rejected", error: "The map is already empty — there are no routes or stations to wipe. Tell the user so." };
+  }
+  return {
+    status: "rendered",
+    clientName: "reset_network",
+    clientArgs: { target: args.target },
+    modelNote:
+      "A confirmation dialog is now open. NOTHING has been deleted yet — the user must click Reset " +
+      "(they can also export first, cancel, or switch between empty map and default network).",
+  };
+}
+
 /** Resolve any WRITE tool call into a client event or a model-facing rejection. */
 export async function resolveWriteTool(
   name: string,
@@ -702,6 +1004,15 @@ export async function resolveWriteTool(
     case "draw_corridor": return resolveDrawCorridor(args);
     case "drop_pin": return resolveDropPin(args, ctx);
     case "fly_to": return resolveFlyTo(args);
+    case "reset_network": return resolveResetNetwork(args, ctx);
+    // App actions — resolvers live in ./tools-actions.ts.
+    case "set_map_layers": return resolveSetMapLayers(args, ctx);
+    case "show_isochrone": return resolveShowIsochrone(args);
+    case "focus": return resolveFocus(args, ctx);
+    case "set_route_visibility": return resolveSetRouteVisibility(args, ctx);
+    case "open_panel": return resolveOpenPanel(args, ctx);
+    case "run_simulation": return resolveRunSimulation(args, ctx);
+    case "propose_line": return resolveProposeLine(args, ctx);
     default: return { status: "rejected", error: `unknown write tool: ${name}` };
   }
 }

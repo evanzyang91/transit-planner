@@ -3,7 +3,7 @@
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import mapboxgl from "mapbox-gl";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { haversineKm, computeStationPopulations } from "~/app/map/geo-utils";
 import {
   ROUTES,
@@ -25,6 +25,24 @@ import { LayersDropdown, type OverlaySpec, type ActionRow } from "./map/LayersDr
 import { OVERLAY_ICONS } from "./map/overlay-icons";
 import { IsochroneDetails } from "./map/IsochroneDetails";
 import { AIChatPanel } from "./map/AIChatPanel";
+import { useRegisterMapAssistantBridge, type MapAssistantBridge } from "./map/MapAssistantContext";
+import type { AppAction, DraftLine, PanelId, ToggleableLayerId } from "~/lib/map-assistant-protocol";
+import {
+  buildMapUiSnapshot,
+  findNeighbourhoodByName,
+  isSimulationResultLike,
+  neighbourhoodNameAt,
+  toNetworkRoutesPayload,
+  type MapUiStateInput,
+} from "./map/map-ui-snapshot";
+import {
+  DRAFT_PREVIEW_COLOR,
+  coordsBounds,
+  draftPreviewGeoJSON,
+  draftToRoute,
+  nextCustomLineId,
+  validateDraftLine,
+} from "./map/draft-line";
 import {
   annotationBbox,
   useAIAnnotations,
@@ -34,7 +52,7 @@ import {
   deleteVertex,
   type AIAnnotation,
 } from "./map/AIAnnotationsContext";
-import { COLOR_HEX } from "~/lib/ai-map-tools-client";
+import { COLOR_HEX, type ResetTarget } from "~/lib/ai-map-tools-client";
 import LinesPanel from "./map/LinesPanel";
 import { GameMode } from "./map/GameMode";
 import { MobileNav } from "./MobileNav";
@@ -52,6 +70,7 @@ import { useLiveVehicles } from "./map/hooks/useLiveVehicles";
 import { useTransitDesert } from "./map/hooks/useTransitDesert";
 import { useIsochrone } from "./map/hooks/useIsochrone";
 import { identifyAnalyticsUser, registerAnalyticsSuperProps, trackEvent } from "~/lib/analytics";
+import { costBn, costModeFor, formatCostBn } from "~/lib/cost-model";
 
 type DrawMode = "normal" | "select" | "boundary";
 
@@ -134,10 +153,21 @@ function darkenColor(hex: string): string {
 // 📖 Learn: moveLayer(id, beforeId) puts `id` directly BELOW `beforeId`;
 //   moveLayer(id) with no beforeId lifts it to the very top.
 
+/** The Ask AI "drafted line" preview (propose_line), bottom→top. Added just
+ *  BELOW the annotation layers, so it is the bottom of the AI stack. */
+const AI_DRAFT_LAYER_IDS = [
+  "ai-draft-line-casing",
+  "ai-draft-line",
+  "ai-draft-line-stops",
+  "ai-draft-line-labels",
+] as const;
+
 /** AI-annotation overlay layers, listed bottom→top in the order they paint.
  *  These are things the user explicitly asked the AI to draw, so they must
  *  always sit on the very top — above route lines AND basemap labels. */
 const AI_OVERLAY_LAYER_IDS = [
+  // Listed first so the route re-stack (aiOverlayFloor) also keeps lines under the draft preview.
+  ...AI_DRAFT_LAYER_IDS,
   "ai-highlights-fill",
   "ai-highlights-line",
   "ai-corridors-line",
@@ -154,6 +184,23 @@ const AI_OVERLAY_LAYER_IDS = [
 function aiOverlayFloor(map: mapboxgl.Map): string | undefined {
   return AI_OVERLAY_LAYER_IDS.find((id) => map.getLayer(id));
 }
+
+/** Every layer the "add map layers" effect creates for one route (same list as handleDeleteCustomLine). */
+function routeLayerIds(routeId: string): string[] {
+  return [
+    `route-shadow-${routeId}`, `route-outline-${routeId}`, `route-line-${routeId}`, `route-shimmer-${routeId}`,
+    `stops-ring-${routeId}`, `stops-selected-${routeId}`, `stops-dot-${routeId}`, `stops-label-${routeId}`,
+    `underground-line-${routeId}`, `portals-dot-${routeId}`,
+  ];
+}
+
+/** The GeoJSON sources behind routeLayerIds. Remove layers first: Mapbox refuses to drop a source a layer still uses. */
+function routeSourceIds(routeId: string): string[] {
+  return [`route-${routeId}`, `stops-${routeId}`, `underground-${routeId}`, `portals-${routeId}`];
+}
+
+/** What commitDraftLine reports back to the chat's confirm card (MapAssistantBridge contract). */
+type DraftCommitResult = { ok: true; routeId: string } | { ok: false; error: string };
 
 /** True for a basemap symbol layer that renders a place / admin NAME label
  *  (neighbourhood, city, region, country). In Mapbox light/dark-v11 these are
@@ -298,7 +345,6 @@ export function TransitMap() {
   // this drives both the RoutePanel highlight and its delete button.
   const [selectedStop, setSelectedStop] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [generatedRoute, setGeneratedRoute] = useState<GeneratedRoute | null>(null);
   const [selectedGeneratedStop, setSelectedGeneratedStop] = useState<string | null>(null);
   const [disabledStops, setDisabledStops] = useState<Set<string>>(new Set());
@@ -346,6 +392,14 @@ export function TransitMap() {
   const lastSavedRoutesRef = useRef<Route[] | null>(null);
   const planIsDirty = currentPlanId !== null && routes !== lastSavedRoutesRef.current;
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  // Which reset the dialog will perform. Settings/MobileNav open it on
+  // "default" (the original behaviour); the AI assistant's reset_network tool
+  // can preselect "empty". The user can switch in the dialog either way.
+  const [resetTarget, setResetTarget] = useState<ResetTarget>("default");
+  function openResetConfirm(target: ResetTarget) {
+    setResetTarget(target);
+    setShowResetConfirm(true);
+  }
   const [imperial, setImperial] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [aiProvider, setAiProvider] = useState<"anthropic" | "gemini">("anthropic");
@@ -433,6 +487,15 @@ export function TransitMap() {
   // user picks "Ask AI about here"). The chat consumes this once on open then
   // clears it; nulling here resets the pipe.
   const [aiSeed, setAiSeed] = useState<string | null>(null);
+  // A line the assistant drafted (propose_line). Only PREVIEWED on the map —
+  // it becomes a real route when the user clicks "Add" on the chat's confirm card.
+  const [draftLine, setDraftLine] = useState<DraftLine | null>(null);
+  // draftId → the route id it became, so a double-click on "Add" can't add the same draft twice.
+  const committedDraftsRef = useRef(new Map<string, string>());
+  // A simulation the assistant ran (show_simulation). Passed to SimulationPanel
+  // as `externalResult`, kept apart from simResults so the user's own runs
+  // don't look like assistant runs to the panel.
+  const [assistantSimResult, setAssistantSimResult] = useState<SimulationResult | null>(null);
   const [simResults, setSimResults] = useState<SimulationResult | null>(null);
   const [animAgents, setAnimAgents] = useState<import("./map/SimulationPanel").PerAgentResult[] | null>(null);
   const animFrameRef = useRef<number | null>(null);
@@ -844,7 +907,10 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     setDarkMode(stored !== null ? stored === "1" : window.matchMedia("(prefers-color-scheme: dark)").matches);
     setHighContrast(get("highContrast"));
     setShowStationLabels(get("t_showStationLabels"));
-    setShowAskAIButton(get("t_showAskAI")); // absent → false → button stays hidden
+    // Ask AI is shown by default; only an explicit "0" (the user switched it
+    // off in Settings) hides it. Saved by toggleAskAIButton, not an effect.
+    const storedAskAI = localStorage.getItem("t_showAskAI");
+    setShowAskAIButton(storedAskAI === null ? true : storedAskAI === "1");
     const storedProvider = localStorage.getItem("aiProvider");
     if (storedProvider === "gemini") setAiProvider("gemini");
 
@@ -865,7 +931,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
   useEffect(() => { localStorage.setItem("t_randomizeSpeakingOrder", randomizeSpeakingOrder ? "1" : "0"); }, [randomizeSpeakingOrder]);
   useEffect(() => { localStorage.setItem("t_imperial", imperial ? "1" : "0"); }, [imperial]);
   useEffect(() => { localStorage.setItem("aiProvider", aiProvider); }, [aiProvider]);
-  useEffect(() => { localStorage.setItem("t_showAskAI", showAskAIButton ? "1" : "0"); }, [showAskAIButton]);
+  // (t_showAskAI is written by toggleAskAIButton on an explicit click. An effect
+  // here would also run on mount — before the stored value is read — and save
+  // "0", turning the new "shown by default" into a permanent "off".)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -1207,159 +1275,6 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     return () => document.removeEventListener("mousedown", onOutsideClick);
   }, [showIEDropdown]);
 
-  async function handleGenerateRoute() {
-    if (isGenerating) return;
-    trackEvent("Generated Route Requested", {
-      ...getAnalyticsContext(),
-      selected_neighbourhoods: selectedNeighbourhoodsRef.current.size,
-      selected_stations: selectedStationsRef.current.size,
-      has_boundary: hasBoundary,
-    });
-    setIsGenerating(true);
-    setGeneratedRoute(null);
-    setDisabledStops(new Set());
-
-    const stops: { name: string; coords: [number, number] }[] = [];
-
-    // One stop per selected neighbourhood at its bbox centroid
-    const geoJSON = neighbourhoodsGeoJSONRef.current;
-    if (geoJSON) {
-      for (const id of selectedNeighbourhoodsRef.current) {
-        const feat = geoJSON.features.find((f) => f.properties?.AREA_SHORT_CODE === id);
-        if (!feat?.geometry) continue;
-        const [minX, minY, maxX, maxY] = geomBBox(feat.geometry);
-        const name = (feat.properties?.AREA_NAME as string | undefined) ?? id;
-        stops.push({ name, coords: [(minX + maxX) / 2, (minY + maxY) / 2] });
-      }
-    }
-
-    // One stop per selected station (use existing coords)
-    for (const key of selectedStationsRef.current) {
-      const [stationName, routeId] = key.split("::");
-      if (!stationName || !routeId) continue;
-      const route = routesRef.current.find((r) => r.id === routeId);
-      const found = route?.stops.find((s) => s.name === stationName);
-      if (found) stops.push({ name: found.name, coords: found.coords });
-    }
-
-    // If a boundary was drawn, add its centroid as a waypoint stop
-    const draw = drawRef.current;
-    if (draw && hasBoundary) {
-      const features = draw.getAll().features;
-      const poly = features[0];
-      if (poly?.geometry) {
-        const [minX, minY, maxX, maxY] = geomBBox(poly.geometry as GeoJSON.Geometry);
-        stops.push({ name: "Selected Area", coords: [(minX + maxX) / 2, (minY + maxY) / 2] });
-      }
-    }
-
-    if (stops.length < 2) {
-      trackEvent("Generated Route Aborted", {
-        ...getAnalyticsContext(),
-        requested_stops: stops.length,
-        reason: "not_enough_points",
-      });
-      setIsGenerating(false);
-      return;
-    }
-
-    // Order west → east by longitude so the line flows sensibly
-    stops.sort((a, b) => a.coords[0] - b.coords[0]);
-
-    // Population within 2 km of each generated stop (from loaded census data)
-    const stopPopulations = stops.map((stop) => ({
-      name: stop.name,
-      pop: popRawData.reduce((sum, row) =>
-        haversineKm(stop.coords, [row.longitude, row.latitude]) <= 2 ? sum + row.population : sum, 0),
-    }));
-
-    // Total route length in km
-    const routeLengthKm = stops.slice(1).reduce(
-      (sum, s, i) => sum + haversineKm(stops[i]!.coords, s.coords), 0
-    );
-
-    // Neighbourhood names for context
-    const neighbourhoodNames = [...selectedNeighbourhoodsRef.current].map((id) => {
-      const feat = neighbourhoodsGeoJSONRef.current?.features.find(
-        (f) => f.properties?.AREA_SHORT_CODE === id
-      );
-      return (feat?.properties?.AREA_NAME as string | undefined) ?? id;
-    });
-
-    const stopList = stops.map((s) => s.name).join(" → ");
-    const popLines = stopPopulations
-      .map((s) => `  - ${s.name}: ~${(Math.round(s.pop / 100) * 100).toLocaleString()} residents`)
-      .join("\n");
-
-    const message = [
-      `Analyze this proposed Toronto subway route and produce realistic planning estimates.`,
-      `Route: ${stopList}`,
-      `Total length: ${routeLengthKm.toFixed(1)} km | Stations: ${stops.length}`,
-      neighbourhoodNames.length > 0 ? `Neighbourhoods served: ${neighbourhoodNames.join(", ")}` : null,
-      `Population within 2 km of each stop:\n${popLines}`,
-      `\nReturn ONLY this JSON (no markdown, no extra text):\n{"description":"<2 sentences about route purpose>","cost":"<e.g. $2.1B>","timeline":"<e.g. 8 years>","costedTimeline":"<e.g. 2034>","minutesSaved":<number>,"dollarsSaved":"<e.g. $4.2M/yr>","percentageChance":<0-100>,"prNightmareScore":<0-10>}`,
-    ].filter(Boolean).join("\n");
-
-    // Defaults in case the Anthropic call fails
-    let description = `Connects ${stopList}`;
-    let stats: GeneratedRoute["stats"] = {
-      cost: "$1.8B", timeline: "7 years", costedTimeline: "2033",
-      minutesSaved: 12, dollarsSaved: "$3.1M/yr", percentageChance: 72, prNightmareScore: 4,
-    };
-
-    try {
-      const res = await fetch("/api/ai/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          systemPrompt: "You are a Toronto transit planning analyst. Respond with ONLY valid JSON, no markdown, no extra text.",
-          maxTokens: 500,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json() as { response: string };
-        const raw = data.response.trim().replace(/^```[a-z]*\n?/, "").replace(/\n?```$/, "").trim();
-        const ai = JSON.parse(raw) as Partial<GeneratedRoute["stats"] & { description: string }>;
-        if (ai.description) description = ai.description;
-        stats = {
-          cost:             ai.cost             ?? stats.cost,
-          timeline:         ai.timeline         ?? stats.timeline,
-          costedTimeline:   ai.costedTimeline   ?? stats.costedTimeline,
-          minutesSaved:     ai.minutesSaved      ?? stats.minutesSaved,
-          dollarsSaved:     ai.dollarsSaved      ?? stats.dollarsSaved,
-          percentageChance: ai.percentageChance  ?? stats.percentageChance,
-          prNightmareScore: ai.prNightmareScore  ?? stats.prNightmareScore,
-        };
-      }
-    } catch { /* fall back to defaults */ }
-
-    setGeneratedRoute({
-      id: `generated-${Date.now()}`,
-      name: "Optimized Route",
-      shortName: "OPT",
-      color: "#e63946",
-      textColor: "#ffffff",
-      type: "subway",
-      description,
-      frequency: "Every 5 min",
-      servicePattern: { headwayMinutes: 5, startHour: 6, endHour: 23, days: ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"] },
-      // Generated stops are built from selections/neighbourhoods and carry no
-      // id — mint one so the generated-route dots are clickable like any other.
-      stops: stops.map((s) => ({ ...s, id: newStopId() })),
-      stats,
-    });
-    trackEvent("Generated Route Completed", {
-      ...getAnalyticsContext(),
-      generated_stop_count: stops.length,
-      generated_length_km: Number(routeLengthKm.toFixed(2)),
-      minutes_saved: stats.minutesSaved,
-      approval_chance: stats.percentageChance,
-      pr_nightmare_score: stats.prNightmareScore,
-    });
-    setIsGenerating(false);
-    handleClearAll();
-  }
 
   function distToSegmentKm(p: [number, number], a: [number, number], b: [number, number]): number {
     const dx = b[0] - a[0], dy = b[1] - a[1];
@@ -1619,6 +1534,10 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     let startTime: number | null = null;
 
     function frame(ts: number) {
+      // The map this loop was drawing on has been removed (the user left /map)
+      // or replaced (StrictMode remount). Calling getLayer on a removed map
+      // throws "Cannot read properties of undefined (reading 'getOwnLayer')".
+      if (mapRef.current !== animMap) return;
       if (!startTime) startTime = ts + delayMs;
       const elapsed = ts - startTime;
       if (elapsed < 0) { drawAnimRef.current.set(routeId, requestAnimationFrame(frame)); return; }
@@ -2049,7 +1968,6 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     if (!containerRef.current || mapRef.current) return;
 
     mapboxgl.accessToken = TOKEN;
-    console.log(TOKEN, "my token")
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
@@ -2067,7 +1985,6 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     });
 
     mapRef.current = map;
-    console.log(mapRef.current)
 
     const draw = new MapboxDraw({
       displayControlsDefault: false,
@@ -2135,6 +2052,8 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
 
       // ── Neighbourhood fill/border layers (below routes)
       void neighbourhoodFetch.then((neighbourhoodData: GeoJSON.FeatureCollection) => {
+        // The 2 MB file can arrive after the user has already left /map.
+        if (mapRef.current !== map) return;
         neighbourhoodsGeoJSONRef.current = neighbourhoodData;
         map.addSource("neighbourhoods", {
           type: "geojson",
@@ -2825,8 +2744,31 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     };
     document.addEventListener("keydown", onKeyDown);
 
+    // Where the animation loops and timers keep their ids. Copied out here, not
+    // read inside the cleanup: these Map objects are created once by useRef and
+    // only ever mutated, never replaced, so this is the same object the
+    // cleanup would see (and it keeps the react-hooks lint rule quiet).
+    const animationFrameIdMaps = [drawAnimRef.current, shimmerAnimRef.current, windingAnimRef.current, toolAnimRafsRef.current];
+    const timerIdMaps = [toolAnimTimeoutsRef.current, snapDebounceRef.current];
+
     return () => {
       document.removeEventListener("keydown", onKeyDown);
+      // Stop every animation loop and pending timer that still points at this
+      // map BEFORE removing it. Otherwise their next tick calls map.getLayer()
+      // on a destroyed map and throws (15–20 errors every time you left /map).
+      // 📖 Learn: requestAnimationFrame / setTimeout callbacks keep running
+      // after a component unmounts unless you cancel them yourself.
+      for (const rafIds of animationFrameIdMaps) {
+        rafIds.forEach((rafId) => cancelAnimationFrame(rafId));
+        rafIds.clear();
+      }
+      // These two hold a single number that IS replaced on every frame, so read the latest value now.
+      if (animFrameRef.current !== null) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; }
+      if (shimmerRafRef.current !== null) { cancelAnimationFrame(shimmerRafRef.current); shimmerRafRef.current = null; }
+      for (const timers of timerIdMaps) {
+        timers.forEach((timer) => clearTimeout(timer));
+        timers.clear();
+      }
       map.remove();
       mapRef.current = null;
     };
@@ -3171,6 +3113,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     if (!map || !mapLoaded) return;
 
     const teardown = () => {
+      // On unmount this cleanup runs after the init effect's map.remove() (React
+      // cleans up effects in declaration order); a removed map can't be touched.
+      if (mapRef.current !== map) return;
       for (const id of [HANDLE_MIDPOINT, HANDLE_VERTEX]) {
         if (map.getLayer(id)) map.removeLayer(id);
       }
@@ -3415,7 +3360,10 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
     const SRC = "catchment-src", FILL = "catchment-fill", LINE = "catchment-line";
-    const cleanup = () => { [FILL, LINE].forEach((l) => { if (map.getLayer(l)) map.removeLayer(l); }); if (map.getSource(SRC)) map.removeSource(SRC); };
+    const cleanup = () => {
+      if (mapRef.current !== map) return; // map already removed (left /map) — see the AI handles teardown
+      [FILL, LINE].forEach((l) => { if (map.getLayer(l)) map.removeLayer(l); }); if (map.getSource(SRC)) map.removeSource(SRC);
+    };
     cleanup();
     if (!showCatchment) return;
     const seen = new Set<string>();
@@ -3440,7 +3388,10 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
     const SRC = "disruption-src", FILL = "disruption-fill", LINE = "disruption-line";
-    const cleanup = () => { [FILL, LINE].forEach((l) => { if (map.getLayer(l)) map.removeLayer(l); }); if (map.getSource(SRC)) map.removeSource(SRC); };
+    const cleanup = () => {
+      if (mapRef.current !== map) return; // map already removed (left /map)
+      [FILL, LINE].forEach((l) => { if (map.getLayer(l)) map.removeLayer(l); }); if (map.getSource(SRC)) map.removeSource(SRC);
+    };
     cleanup();
     if (!showDisruption) return;
     const affected = disruptionRouteId ? routes.filter((r) => r.id === disruptionRouteId) : routes.filter((r) => !hiddenRoutes.has(r.id));
@@ -3465,7 +3416,10 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
     const SRC = "measure-src", LINE = "measure-line";
-    const cleanup = () => { if (map.getLayer(LINE)) map.removeLayer(LINE); if (map.getSource(SRC)) map.removeSource(SRC); };
+    const cleanup = () => {
+      if (mapRef.current !== map) return; // map already removed (left /map)
+      if (map.getLayer(LINE)) map.removeLayer(LINE); if (map.getSource(SRC)) map.removeSource(SRC);
+    };
     cleanup();
     if (!measurePoints) return;
     const geojson: GeoJSON.Feature<GeoJSON.LineString> = { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [measurePoints[0], measurePoints[1]] } };
@@ -3887,6 +3841,30 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
     labelIds.forEach(moveBelowFloor);          // 4. stop labels on top of our stack
   }, [routes, mapLoaded]);
 
+  // ── remove map layers for routes that left `routes` ─────────────────────────
+  // The effect above only ever ADDS layers. When a route disappears from state
+  // without going through handleDeleteCustomLine — Undo of an added line (e.g.
+  // one the assistant drafted), Reset, New plan, loading another plan — its
+  // layers stayed behind as a "ghost" line. Comparing the route ids before and
+  // after each change catches all of those paths in one place.
+  const prevRouteIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const currentIds = new Set(routes.map((r) => r.id));
+    const removedIds = [...prevRouteIdsRef.current].filter((id) => !currentIds.has(id));
+    prevRouteIdsRef.current = currentIds;
+    const map = mapRef.current;
+    if (!map || removedIds.length === 0) return;
+    for (const routeId of removedIds) {
+      // Stop animations still drawing this line before its layers disappear.
+      for (const rafIds of [drawAnimRef.current, windingAnimRef.current, shimmerAnimRef.current]) {
+        const rafId = rafIds.get(routeId);
+        if (rafId !== undefined) { cancelAnimationFrame(rafId); rafIds.delete(routeId); }
+      }
+      for (const layerId of routeLayerIds(routeId)) if (map.getLayer(layerId)) map.removeLayer(layerId);
+      for (const sourceId of routeSourceIds(routeId)) if (map.getSource(sourceId)) map.removeSource(sourceId);
+    }
+  }, [routes]);
+
   // ── drag-to-reposition stops while in edit mode
   useEffect(() => {
     const map = mapRef.current;
@@ -3968,6 +3946,498 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
       map.dragPan.enable();
     };
   }, [addStationToLine, mapLoaded]);
+
+  // ═══ Ask AI ⇄ map bridge ════════════════════════════════════════════════════
+  // The chat lives in MapAssistantContext, ABOVE this component (so a reply
+  // keeps streaming while the chat card is closed). It reaches the map only
+  // through the small "bridge" object registered at the end of this section:
+  //   • getNetworkRoutes / getUiSnapshot — read what is on screen when a message is sent
+  //   • onAppAction — the assistant asked for a VIEW change (layers, focus, panels…)
+  //   • commitDraftLine / discardDraftLine — the user clicked Add / Dismiss on a drafted line
+  // Anything that would change the user's network only OPENS a confirm step:
+  // reset_network opens the Reset dialog, propose_line only draws a preview.
+
+  // ── drafted line preview (teal, dashed) ──
+  // Re-runs when mapLoaded flips back to true, like the AI annotation layers:
+  // a dark-mode switch (setStyle) wipes every custom source and layer.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    const LINE_SRC = "ai-draft-line-src";
+    const STOPS_SRC = "ai-draft-line-stops-src";
+    const [CASING, LINE, STOPS, LABELS] = AI_DRAFT_LAYER_IDS;
+
+    const removeAll = () => {
+      for (const id of [LABELS, STOPS, LINE, CASING]) if (map.getLayer(id)) map.removeLayer(id);
+      for (const id of [STOPS_SRC, LINE_SRC]) if (map.getSource(id)) map.removeSource(id);
+    };
+
+    if (!draftLine) {
+      removeAll();
+      return;
+    }
+
+    const preview = draftPreviewGeoJSON(draftLine);
+    // 📖 Learn: getSource<T>() is generic in mapbox-gl v3, so the type goes in <…> instead of an `as` cast.
+    const lineSource = map.getSource<mapboxgl.GeoJSONSource>(LINE_SRC);
+    const stopsSource = map.getSource<mapboxgl.GeoJSONSource>(STOPS_SRC);
+    if (lineSource && stopsSource) {
+      // A newer draft replaced the previous one: just swap the data.
+      lineSource.setData(preview.line);
+      stopsSource.setData(preview.stops);
+      return;
+    }
+
+    removeAll(); // clear any half-built leftovers before adding fresh
+    map.addSource(LINE_SRC, { type: "geojson", data: preview.line });
+    map.addSource(STOPS_SRC, { type: "geojson", data: preview.stops });
+    // Insert directly BELOW the lowest AI annotation layer (or on top when there
+    // are none): above the route lines, under the AI's shading and pins. Read
+    // once, up front — after the first addLayer, aiOverlayFloor would return
+    // our own casing layer and the rest would stack in reverse.
+    const beforeId = aiOverlayFloor(map);
+    map.addLayer({
+      id: CASING, type: "line", source: LINE_SRC,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { "line-color": "#ffffff", "line-width": 8, "line-opacity": 0.85 },
+    }, beforeId);
+    map.addLayer({
+      id: LINE, type: "line", source: LINE_SRC,
+      layout: { "line-join": "round", "line-cap": "round" },
+      // Dashed = "not real yet"; the solid line appears only after the user adds it.
+      paint: { "line-color": DRAFT_PREVIEW_COLOR, "line-width": 4, "line-dasharray": [2, 1.5] },
+    }, beforeId);
+    map.addLayer({
+      id: STOPS, type: "circle", source: STOPS_SRC,
+      paint: { "circle-radius": 5, "circle-color": "#ffffff", "circle-stroke-color": DRAFT_PREVIEW_COLOR, "circle-stroke-width": 2.5 },
+    }, beforeId);
+    map.addLayer({
+      id: LABELS, type: "symbol", source: STOPS_SRC, minzoom: 11,
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+        "text-size": 11,
+        "text-anchor": "top",
+        "text-offset": [0, 0.9],
+        "text-optional": true,
+      },
+      // teal-700 on a white halo reads on both the light and the dark basemap,
+      // so this effect doesn't need to re-run on a theme change.
+      paint: { "text-color": "#0f766e", "text-halo-color": "#ffffff", "text-halo-width": 1.5 },
+    }, beforeId);
+  }, [draftLine, mapLoaded]);
+
+  /**
+   * Canada heatmap on/off — shared by the Layers dropdown and the assistant so
+   * both show the same short spinner (the tiles stream in lazily; 1 s is the
+   * empirical wait the dropdown always used).
+   */
+  async function setCanadaPopVisible(next: boolean) {
+    if (canadaPopLoading || next === showCanadaPop) return;
+    setShowCanadaPop(next);
+    if (next) {
+      setCanadaPopLoading(true);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setCanadaPopLoading(false);
+    }
+  }
+
+  /** Settings → "Ask AI". Saved here, on an explicit click (see the note by the persist effects). */
+  function toggleAskAIButton() {
+    const next = !showAskAIButton;
+    setShowAskAIButton(next);
+    localStorage.setItem("t_showAskAI", next ? "1" : "0");
+  }
+
+  /** Move the camera to [west, south, east, north], leaving room for the floating panels. */
+  function fitMapToAssistantTarget(bounds: [number, number, number, number]) {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    // Side padding ≈ a fifth of the map width (Lines panel on the left, chat
+    // card / right rail on the right), clamped so small screens still fit.
+    const width = map.getContainer().clientWidth;
+    const side = Math.min(380, Math.max(40, Math.round(width * 0.22)));
+    map.fitBounds(
+      [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
+      { padding: { top: 100, bottom: 80, left: side, right: side }, duration: 900, maxZoom: 14 },
+    );
+  }
+
+  /**
+   * Simulate and Plans share the right-hand rail with the Route panel, and the
+   * Route panel wins (see their translate-x conditions in the JSX). When the
+   * assistant opens one of them, close the Route panel so it is actually seen.
+   */
+  function revealRightRailPanel() {
+    setSelectedRouteId(null);
+    setSelectedStop(null);
+  }
+
+  /** set_map_layers — the same setters as each row of the Layers dropdown, so the
+   *  same persistence (t_show*), loading spinners and analytics effects run. */
+  function setLayerFromAssistant(id: ToggleableLayerId, on: boolean) {
+    switch (id) {
+      case "population": setShowHeatmap(on); break;
+      case "canadaPop": void setCanadaPopVisible(on); break;
+      case "serviceHeatmap": setShowServiceHeatmap(on); break;
+      case "transitDesert": setShowTransitDesert(on); break;
+      case "traffic": setShowTraffic(on); break;
+      case "coverage": setShowCoverageZones(on); break;
+      case "catchment": setShowCatchment(on); break;
+      case "liveVehicles": setShowLiveVehicles(on); break;
+      case "stationLabels": setShowStationLabels(on); break;
+      case "aiFindings": setAiAnnotationsVisible(on); break;
+    }
+  }
+
+  /** focus → route: select it exactly like clicking the line, then frame it. */
+  function focusRouteFromAssistant(routeId: string, routeName: string) {
+    const wantedName = routeName.trim().toLowerCase();
+    let route: Route | null =
+      routesRef.current.find((r) => r.id === routeId) ??
+      // Fallback by name, e.g. a line renamed since the server last saw it.
+      routesRef.current.find((r) => r.name.trim().toLowerCase() === wantedName) ??
+      null;
+
+    if (!route) {
+      // A TTC bus that isn't in the plan yet: activate it like picking its row
+      // in the Lines panel (undo snapshot + add to routes) so it gets its own
+      // layers and the Route panel can open. Edit mode is NOT entered — this
+      // is a view action.
+      const bus =
+        BUS_ROUTES.find((r) => r.id === routeId) ??
+        BUS_ROUTES.find((r) => r.name.trim().toLowerCase() === wantedName);
+      if (bus) {
+        const activated = withStopIds([bus])[0] ?? bus;
+        snapshotHistory();
+        setRoutes((prev) => (prev.some((r) => r.id === activated.id) ? prev : [...prev, activated]));
+        route = activated;
+      }
+    }
+
+    if (!route) {
+      console.warn(`[ask-ai] focus: no route "${routeId}" (${routeName}) on this map`);
+      return;
+    }
+
+    const target = route;
+    // A hidden line can't be seen once focused, so show it (the Lines panel does the same).
+    setHiddenRoutes((prev) => {
+      if (!prev.has(target.id)) return prev;
+      const next = new Set(prev);
+      next.delete(target.id);
+      return next;
+    });
+    // The same two setters as the route-line click handler.
+    setSelectedRouteId(target.id);
+    setSelectedStop(null);
+    const bounds = coordsBounds(target.stops.map((s) => s.coords));
+    if (bounds) fitMapToAssistantTarget(bounds);
+  }
+
+  /** focus → neighbourhood: open its Neighbourhood panel (what clicking it does) and frame it. */
+  function focusNeighbourhoodFromAssistant(name: string, bbox?: [number, number, number, number]) {
+    const boundaries = neighbourhoodsGeoJSONRef.current?.features ?? [];
+    const feature = findNeighbourhoodByName(boundaries, name);
+    if (!feature?.geometry) {
+      // Boundaries not loaded yet, or a name our file doesn't use: still move the camera if we can.
+      if (bbox) fitMapToAssistantTarget(bbox);
+      else console.warn(`[ask-ai] focus: no neighbourhood called "${name}"`);
+      return;
+    }
+    const [west, south, east, north] = geomBBox(feature.geometry);
+    setFocusedNeighbourhood({
+      id: (feature.properties?.AREA_SHORT_CODE as string | undefined) ?? name,
+      name: (feature.properties?.AREA_NAME as string | undefined) ?? name,
+      // A click passes the clicked point; the middle of the bounding box stands in for it.
+      lat: (south + north) / 2,
+      lng: (west + east) / 2,
+      geometry: feature.geometry,
+    });
+    fitMapToAssistantTarget(bbox ?? [west, south, east, north]);
+  }
+
+  /** set_route_visibility — edits the same Set as the Lines panel's eye buttons. Nothing is deleted. */
+  function setRouteVisibilityFromAssistant(routeIds: string[], visible: boolean) {
+    // Ignore ids this map doesn't know; hiddenRoutes is saved with plans and share links.
+    const knownIds = routeIds.filter(
+      (id) =>
+        routesRef.current.some((r) => r.id === id) ||
+        BUS_ROUTES.some((r) => r.id === id) ||
+        GO_TRAIN_ROUTES.some((r) => r.id === id),
+    );
+    if (knownIds.length === 0) return;
+    setHiddenRoutes((prev) => {
+      const next = new Set(prev);
+      for (const id of knownIds) {
+        if (visible) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  }
+
+  /** open_panel — the same switches as the toolbar buttons / Settings (Simulate and Plans exclude each other). */
+  function openPanelFromAssistant(panel: PanelId) {
+    switch (panel) {
+      case "simulation":
+        setShowSimPanel(true);
+        setShowPlansPanel(false);
+        revealRightRailPanel();
+        break;
+      case "plans":
+        setShowPlansPanel(true);
+        setShowSimPanel(false);
+        revealRightRailPanel();
+        break;
+      case "analysis":
+        // Settings → "Analysis panel" flips these two together.
+        setAdvancedMode(true);
+        setExperimentalFeatures(true);
+        break;
+      case "none":
+        setShowSimPanel(false);
+        setShowPlansPanel(false);
+        setAdvancedMode(false);
+        setExperimentalFeatures(false);
+        break;
+    }
+  }
+
+  /** show_simulation — the server already ran it; show it as if the user had pressed Run. */
+  function showSimulationFromAssistant(result: unknown) {
+    // The result came over the network: check its shape before the map and
+    // the panel read fields like result.delta.total_time_saved_min.
+    if (!isSimulationResultLike(result)) {
+      console.warn("[ask-ai] show_simulation: the result doesn't look like a simulation; ignored");
+      return;
+    }
+    // Same as SimulationPanel's onResults: stress lines on the map, old animation cleared.
+    setSimResults(result);
+    setAnimAgents(null);
+    setAssistantSimResult(result);
+    setShowSimPanel(true);
+    setShowPlansPanel(false);
+    revealRightRailPanel();
+  }
+
+  /** propose_line — preview only. Nothing is added until the user clicks "Add" in the chat. */
+  function showDraftLineFromAssistant(draft: DraftLine) {
+    const problem = validateDraftLine(draft);
+    if (problem) {
+      console.warn(`[ask-ai] propose_line ignored: ${problem}`);
+      return;
+    }
+    setDraftLine(draft);
+    const bounds = coordsBounds(draft.stops.map((s) => s.coords));
+    if (bounds) fitMapToAssistantTarget(bounds);
+  }
+
+  /** Every app action the assistant can send (APP_ACTION_NAMES in map-assistant-protocol.ts). */
+  function handleAssistantAction(action: AppAction) {
+    switch (action.name) {
+      case "reset_network":
+        // Mutating → only opens the Reset dialog; the user still has to press Reset.
+        openResetConfirm(action.args.target);
+        break;
+      case "set_map_layers":
+        for (const layer of action.args.layers) setLayerFromAssistant(layer.id, layer.on);
+        break;
+      case "show_isochrone":
+        if ("clear" in action.args) {
+          setIsochroneOrigin(null);
+          setPickingIsochroneOrigin(false);
+        } else {
+          // The same setters the Isochrone row in the Layers dropdown uses.
+          setIsoMode(action.args.mode);
+          setIsochroneMinutes(action.args.minutes);
+          setIsochroneOrigin(action.args.origin);
+          setPickingIsochroneOrigin(false);
+          // The travel-time polygons are drawn around the origin, so make sure it's on screen.
+          const map = mapRef.current;
+          if (map && mapLoaded && !map.getBounds()?.contains(action.args.origin)) {
+            map.easeTo({ center: action.args.origin, duration: 900 });
+          }
+        }
+        break;
+      case "focus":
+        if (action.args.target === "route") focusRouteFromAssistant(action.args.routeId, action.args.routeName);
+        else focusNeighbourhoodFromAssistant(action.args.name, action.args.bbox);
+        break;
+      case "set_route_visibility":
+        setRouteVisibilityFromAssistant(action.args.routeIds, action.args.visible);
+        break;
+      case "open_panel":
+        openPanelFromAssistant(action.args.panel);
+        break;
+      case "show_simulation":
+        showSimulationFromAssistant(action.args.result);
+        break;
+      case "propose_line":
+        showDraftLineFromAssistant(action.args);
+        break;
+    }
+  }
+
+  /**
+   * The user clicked "Add" on a drafted line: make it a real custom line the
+   * way the New Line flow does (custom-N id, auto badge, white badge text, id'd
+   * stops, "Custom line" defaults) — with an Undo step.
+   */
+  function commitAssistantDraft(draft: DraftLine): DraftCommitResult {
+    const problem = validateDraftLine(draft);
+    if (problem) return { ok: false, error: problem };
+
+    // Double-click guard: this draft is already a line on the map → same answer again.
+    // (After an Undo the line is gone, so clicking Add again adds it again.)
+    const earlierRouteId = committedDraftsRef.current.get(draft.draftId);
+    if (earlierRouteId && routesRef.current.some((r) => r.id === earlierRouteId)) {
+      return { ok: true, routeId: earlierRouteId };
+    }
+
+    // Undo entry first, so ⌘Z removes the whole line in one step.
+    snapshotHistory();
+    const { id, nextCounter } = nextCustomLineId(
+      routesRef.current.map((r) => r.id),
+      customLineCounterRef.current,
+    );
+    customLineCounterRef.current = nextCounter;
+    const newRoute = draftToRoute(draft, { id, makeStopId: newStopId });
+    setRoutes((prev) => [...prev, newRoute]);
+    // Mirror into the ref now (the routes effect only syncs it after the next
+    // render) so a second click in the same frame hits the guard above.
+    routesRef.current = [...routesRef.current, newRoute];
+    committedDraftsRef.current.set(draft.draftId, id);
+    // Nothing else to mark as unsaved: planIsDirty and hasUnsaved are derived from `routes`.
+    trackEvent("Line Created", {
+      ...getAnalyticsContext(routesRef.current),
+      route_id: id,
+      route_name: newRoute.name,
+      route_type: newRoute.type,
+      short_name: newRoute.shortName,
+      color: newRoute.color,
+      creation_source: "ai_assistant",
+    });
+
+    // The preview has done its job (only if it is still showing THIS draft).
+    setDraftLine((current) => (current?.draftId === draft.draftId ? null : current));
+    // Select it like clicking a line, so its Route panel opens.
+    setSelectedRouteId(id);
+    setSelectedStop(null);
+    // Bus and streetcar lines follow streets: road-snap them, as placing stops by hand does.
+    if (newRoute.type === "bus" || newRoute.type === "streetcar") triggerAutoSnap(id);
+    return { ok: true, routeId: id };
+  }
+
+  /** A plain copy of the state the UI snapshot needs. Called when a message is sent, not on every render. */
+  function readAssistantUiState(): MapUiStateInput {
+    const map = mapRef.current;
+    let viewport: MapUiStateInput["viewport"] = null;
+    const bounds = map && mapLoaded ? map.getBounds() : null;
+    if (map && bounds) {
+      const center = map.getCenter();
+      const boundaries = neighbourhoodsGeoJSONRef.current?.features;
+      viewport = {
+        center: [center.lng, center.lat],
+        zoom: map.getZoom(),
+        bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+        // Same lookup as the right-click menu. undefined = boundaries not loaded yet.
+        neighbourhoodAtCenter: boundaries ? neighbourhoodNameAt([center.lng, center.lat], boundaries) : undefined,
+      };
+    }
+
+    // Same conditions as the panels' translate-x classes in the JSX below.
+    const generatedPanelVisible = generatedRoute !== null && selectedRoute === null;
+    const rightRailFree = selectedRoute === null && !generatedPanelVisible;
+    // selectedStop holds a stop id; the popup also knows the name for buses that aren't loaded.
+    const selectedStopName =
+      selectedRoute?.stops.find((s) => s.id === selectedStop)?.name ?? stationPopup?.name ?? null;
+
+    return {
+      viewport,
+      showHeatmap,
+      popLoading,
+      showCanadaPop,
+      canadaPopLoading,
+      showServiceHeatmap,
+      showTransitDesert,
+      desertComputing,
+      showTraffic,
+      trafficLoading,
+      showCoverageZones,
+      showCatchment,
+      catchmentRadius,
+      showDisruption,
+      disruptionRadius,
+      isochrone: { origin: isochroneOrigin, minutes: isochroneMinutes, mode: isoMode },
+      showLiveVehicles,
+      showStationLabels,
+      aiFindingsVisible: aiAnnotationsVisible,
+      aiFindingsCount: aiAnnotations.length,
+      customOverlayLoaded: customOverlay !== null,
+      animatedAgentCount: animAgents ? new Set(animAgents.map((a) => a.agent_id)).size : 0,
+      selectedRoute: selectedRoute ? { id: selectedRoute.id, name: selectedRoute.name } : null,
+      selectedStopName,
+      focusedNeighbourhood: focusedNeighbourhood?.name ?? null,
+      selectedNeighbourhoods: [...selectedNeighbourhoods].map(
+        (code) =>
+          (neighbourhoodsGeoJSONRef.current?.features.find((f) => f.properties?.AREA_SHORT_CODE === code)
+            ?.properties?.AREA_NAME as string | undefined) ?? code,
+      ),
+      simPanelVisible: showSimPanel && rightRailFree,
+      plansPanelVisible: showPlansPanel && rightRailFree,
+      analysisPanelOpen: experimentalFeatures,
+      councilOpen,
+      councilRunning,
+      routes,
+      hiddenRouteIds: hiddenRoutes,
+      goTransit: showGoTrain,
+      unsavedChanges: currentPlanId !== null ? planIsDirty : hasUnsaved,
+      simResults,
+      darkMode,
+      imperial,
+      signedIn: Boolean(authUser),
+    };
+  }
+
+  // 📖 Learn: the "latest ref" pattern. The bridge below is created ONCE, so
+  // the chat never holds a stale copy of it; its methods look up the newest
+  // render's functions (and through them, the newest state) in this ref.
+  // useLayoutEffect refreshes the ref synchronously after every commit, before
+  // any network event (a streamed tool call) can reach the bridge.
+  const assistantLatestRef = useRef<{
+    readUiState: () => MapUiStateInput;
+    handleAction: (action: AppAction) => void;
+    commitDraft: (draft: DraftLine) => DraftCommitResult;
+  } | null>(null);
+  useLayoutEffect(() => {
+    assistantLatestRef.current = {
+      readUiState: readAssistantUiState,
+      handleAction: handleAssistantAction,
+      commitDraft: commitAssistantDraft,
+    };
+  });
+
+  const assistantBridge = useMemo<MapAssistantBridge>(
+    () => ({
+      getNetworkRoutes: () => toNetworkRoutesPayload(routesRef.current),
+      getUiSnapshot: () => {
+        const latest = assistantLatestRef.current;
+        // Only null before the first commit — nothing can be sent that early.
+        return latest ? buildMapUiSnapshot(latest.readUiState()) : { v: 1, layers: [] };
+      },
+      onAppAction: (action) => assistantLatestRef.current?.handleAction(action),
+      commitDraftLine: (draft) =>
+        assistantLatestRef.current?.commitDraft(draft) ?? {
+          ok: false,
+          error: "The map is still loading. Try again in a moment.",
+        },
+      discardDraftLine: (draftId) =>
+        setDraftLine((current) => (current?.draftId === draftId ? null : current)),
+    }),
+    [],
+  );
+  useRegisterMapAssistantBridge(assistantBridge);
 
   if (!TOKEN) {
     return (
@@ -4294,8 +4764,38 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
               </div>
               <p className="text-sm font-semibold text-stone-800">Reset project?</p>
             </div>
-            <p className="mb-1 pl-10.5 text-sm text-stone-500">
-              This removes all custom lines and restores the default network. <span className="font-medium text-stone-700">This cannot be undone.</span>
+            {/* Two reset flavours. Real radio inputs (not styled divs) so
+                keyboard + screen readers get grouping and arrow-key nav for free.
+                📖 Learn: <fieldset> + same-`name` radios = native radio group */}
+            <fieldset className="mb-3 mt-3 space-y-1.5 pl-10.5">
+              <legend className="sr-only">What to reset to</legend>
+              {([
+                { value: "default", label: "Restore default network", hint: "Removes your custom lines and brings back the original TTC routes." },
+                { value: "empty", label: "Empty map", hint: "Removes every route and station, including the TTC baseline." },
+              ] as const).map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`flex cursor-pointer gap-2.5 rounded-xl border px-3 py-2 transition-colors ${
+                    resetTarget === opt.value ? "border-red-300 bg-red-50" : "border-[#D7D7D7] hover:bg-stone-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="reset-target"
+                    value={opt.value}
+                    checked={resetTarget === opt.value}
+                    onChange={() => setResetTarget(opt.value)}
+                    className="mt-0.5 accent-red-600"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-stone-800">{opt.label}</span>
+                    <span className="block text-xs text-stone-500">{opt.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+            <p className="mb-1 pl-10.5 text-sm font-medium text-stone-700">
+              This cannot be undone.
             </p>
             <p className="mb-5 pl-10.5 text-sm text-amber-600">
               We recommend exporting your work first.
@@ -4324,10 +4824,16 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
                     });
                     setShowGoTrain(false);
                   }
-                  setRoutes([
-                    ...ROUTES.filter((r) => r.type === "streetcar"),
-                    ...ROUTES.filter((r) => r.type !== "bus" && r.type !== "streetcar"),
-                  ]);
+                  if (resetTarget === "empty") {
+                    // Explicit [] — the AI chat sends this as-is, and the
+                    // server reads [] as "empty map" (not "use defaults").
+                    setRoutes([]);
+                  } else {
+                    setRoutes([
+                      ...ROUTES.filter((r) => r.type === "streetcar"),
+                      ...ROUTES.filter((r) => r.type !== "bus" && r.type !== "streetcar"),
+                    ]);
+                  }
                   setShowResetConfirm(false);
                 }}
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 transition-colors"
@@ -4389,19 +4895,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
             [
               { id: "heatmap", label: "Population Density", sub: "Residents per km²", on: showHeatmap, loading: popLoading, color: "#ef4444", onToggle: () => setShowHeatmap((v) => !v) },
               { id: "traffic", label: "Traffic", sub: "Current Mapbox traffic", on: showTraffic, loading: trafficLoading, color: "#f59e0b", onToggle: () => setShowTraffic((v) => !v) },
-              { id: "canadaPop", label: "Canada pop density", sub: "Country-wide population heatmap", on: showCanadaPop, loading: canadaPopLoading, color: "#fbbf24", onToggle: async () => {
-                if (canadaPopLoading) return;
-                const newValue = !showCanadaPop;
-                setShowCanadaPop(newValue);
-                if (newValue) {
-                  setCanadaPopLoading(true);
-                  // 📖 Learn: the dataset is loaded lazily, so we show a spinner
-                  // for a beat after toggling on. 1 s is an empirical wait —
-                  // matches the original implementation in the gear menu.
-                  await new Promise((resolve) => setTimeout(resolve, 1000));
-                  setCanadaPopLoading(false);
-                }
-              } },
+              // 📖 Learn: the dataset is loaded lazily, so setCanadaPopVisible shows
+              // a spinner for a beat after toggling on (shared with the AI assistant).
+              { id: "canadaPop", label: "Canada pop density", sub: "Country-wide population heatmap", on: showCanadaPop, loading: canadaPopLoading, color: "#fbbf24", onToggle: () => { void setCanadaPopVisible(!showCanadaPop); } },
               { id: "stationLabels", label: "Station labels", sub: "Show stop names on each line", on: showStationLabels, color: "#78716c", onToggle: () => setShowStationLabels((v) => !v) },
               { id: "coverage", label: "Coverage Zones", sub: "500 m radius per stop", on: showCoverageZones, color: "#0ea5e9", onToggle: () => setShowCoverageZones((v) => !v) },
               { id: "serviceHeatmap", label: "Service Heatmap", sub: "Density weighted by mode", on: showServiceHeatmap, color: "#f97316", onToggle: () => setShowServiceHeatmap((v) => !v) },
@@ -4528,7 +5024,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
         {/* Ask AI button — opens free-form chat without requiring map selection.
             For the Council deliberation workflow, users still select neighbourhoods
             on the map and click "Generate Route". This is the conversational entry point.
-            Hidden unless opted in via Settings → "Ask AI". */}
+            Shown by default; Settings → "Ask AI" can switch it off. */}
         {showAskAIButton && (
         <button
           onClick={() => setShowAIChat((v) => !v)}
@@ -4540,7 +5036,8 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
             <path d="M8 1.5L9.5 6L14 7.5L9.5 9L8 13.5L6.5 9L2 7.5L6.5 6Z" />
           </svg>
           Ask AI
-          <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-600 uppercase tracking-wide">beta</span>
+          {/* Teal = AI surface (house colour rule); the app chrome around it stays indigo/stone. */}
+          <span className="rounded-full bg-teal-100 px-1.5 py-0.5 text-[9px] font-bold text-teal-700 uppercase tracking-wide">beta</span>
         </button>
         )}
 
@@ -4759,6 +5256,8 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
           customRoutes={routes.filter((r) => r.id.startsWith("custom-"))}
           onClose={() => { setShowSimPanel(false); setSimResults(null); setAnimAgents(null); }}
           onResults={(r) => { setSimResults(r); setAnimAgents(null); }}
+          // A run the assistant did (show_simulation) — the panel shows it without re-running.
+          externalResult={assistantSimResult}
           onAnimate={(agents) => setAnimAgents(agents)}
           onAskAI={!showAskAIButton ? undefined : (seg) => {
             // Build a concrete, context-rich seed so the assistant has the
@@ -4802,16 +5301,20 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
 
       {/* Ask AI chat — floating, draggable, self-positioning.
           Collision avoidance: when the right rail is occupied (a Sim/Plans/
-          Route/Generated panel is open), the panel slides left to avoid overlap. */}
+          Route/Generated panel is open), the panel slides left to avoid overlap;
+          avoidBottomRight does the same for the Council panel.
+          The conversation itself lives in MapAssistantProvider (page.tsx), and
+          the routes / UI snapshot / app actions go through the bridge
+          registered above — so no routes or reset props here any more. */}
       {showAIChat && (
         <AIChatPanel
-          routes={routes}
           onClose={() => { setShowAIChat(false); setAiSeed(null); }}
           seed={aiSeed}
           onSeedConsumed={() => setAiSeed(null)}
           avoidRightRail={
             showSimPanel || showPlansPanel || selectedRoute !== null || showGeneratedPanel
           }
+          avoidBottomRight={councilOpen}
         />
       )}
 
@@ -5144,9 +5647,9 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
           for (let i = 1; i < stops.length; i++) {
             totalKm += haversineKm(stops[i - 1]!.coords, stops[i]!.coords);
           }
-          const costPerKm = parsed.type === "subway" ? 500 : (parsed.type === "streetcar" || parsed.type === "lrt") ? 80 : 4;
-          const costM = Math.round(totalKm * costPerKm);
-          const costStr = costM >= 1000 ? `$${(costM / 1000).toFixed(1)}B` : `$${costM}M`;
+          // One cost formula app-wide (lib/cost-model.ts): km rate + per-station rate,
+          // so this card matches the council scorecard for the same line.
+          const costStr = formatCostBn(costBn(totalKm, stops.length, costModeFor(parsed.type)));
           const buildYears = parsed.type === "subway" ? Math.ceil(totalKm * 1.2 + 3) : (parsed.type === "streetcar" || parsed.type === "lrt") ? Math.ceil(totalKm * 0.6 + 2) : Math.ceil(totalKm * 0.1 + 1);
           const prRaw = parsed.prScore ?? 20;
           const prNorm = Math.round((prRaw / 40) * 10);
@@ -5350,7 +5853,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
                   ["High contrast", highContrast, () => setHighContrast((v) => !v), false],
                   ["Imperial units", imperial, () => setImperial((v) => !v), false],
                   ["Analysis panel", advancedMode, () => { const next = !advancedMode; setAdvancedMode(next); setExperimentalFeatures(next); }, false],
-                  ["Ask AI", showAskAIButton, () => setShowAskAIButton((v) => !v), true],
+                  ["Ask AI", showAskAIButton, toggleAskAIButton, true],
                   ["GO Transit", showGoTrain, () => setShowGoTrain((v) => !v), true],
                 ] as [string, boolean, () => void, boolean][]).map(([label, on, toggle, beta]) => (
                   <button key={label} onClick={toggle} className="flex w-full items-center justify-between px-4 py-2 text-sm text-stone-600 hover:bg-stone-50 transition-colors">
@@ -5426,7 +5929,7 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
               {/* Danger zone */}
               <div className="border-b border-stone-100 py-1">
                 <button
-                  onClick={() => { setShowResetConfirm(true); setShowSettingsMenu(false); }}
+                  onClick={() => { openResetConfirm("default"); setShowSettingsMenu(false); }}
                   className="flex w-full items-center gap-3 px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
                 >
                   <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5 shrink-0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -5703,10 +6206,17 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
           onToggleTraffic={() => setShowTraffic((v) => !v)}
           darkMode={darkMode}
           onToggleDarkMode={() => setDarkMode((v) => !v)}
-          onResetProject={() => setShowResetConfirm(true)}
+          onResetProject={() => openResetConfirm("default")}
           drawMode={drawMode}
-          onSetDrawMode={handleSetDrawMode}
+          // MobileNav is still a scaffold: of its draw buttons only "Select"
+          // ("normal") is a TransitMap DrawMode. Passing handleSetDrawMode
+          // straight through didn't type-check and let "Add stop"/"Delete"/
+          // "Move" store a mode nothing handles, so those are ignored for now.
+          onSetDrawMode={(mode) => {
+            if (mode === "normal") handleSetDrawMode("normal");
+          }}
           onOpenGameMode={() => setShowGameMode(true)}
+          onOpenAssistant={() => setShowAIChat(true)}
         />
       </div>
 

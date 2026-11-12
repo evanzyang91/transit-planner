@@ -1,183 +1,254 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useMapAssistantActions } from "./MapAssistantContext";
 import { TransitAssistant } from "./TransitAssistant";
-import type { Route } from "~/app/map/transit-data";
+import { CloseIcon, CollapseIcon, ExpandIcon, NewChatIcon, ResizeGripIcon, SparkleIcon } from "./assistant/icons";
+import {
+  avoidZones,
+  clampRect,
+  councilZone,
+  defaultRect,
+  expandedRect,
+  moveRect,
+  PANEL_STORAGE_KEY,
+  parsePanelState,
+  resizeFromTopLeft,
+  rightRailZone,
+  serializePanelState,
+  type AvoidZone,
+  type PanelRect,
+  type SavedPanelState,
+  type Viewport,
+} from "./assistant/panel-geometry";
 
 interface Props {
-  routes: Route[];
   onClose: () => void;
-  /**
-   * True when a right-side panel (Sim, Plans, Route, Generated) is open and
-   * occupies the right edge of the screen. The chat panel will slide left if
-   * it would overlap with that rail.
-   */
-  avoidRightRail: boolean;
-  /** Text to pre-fill the chat input (one-shot — TransitAssistant consumes it via onSeedConsumed). */
+  /** Text to pre-fill the message box (one-shot — TransitAssistant consumes it via onSeedConsumed). */
   seed?: string | null;
   onSeedConsumed?: () => void;
+  /** A right-rail panel (Sim, Plans, Route, Generated) is open: slide left of it. */
+  avoidRightRail?: boolean;
+  /** The Planning Council panel is open in the bottom-right: slide up/left of it. */
+  avoidBottomRight?: boolean;
 }
 
-const PANEL_WIDTH = 360;
-const PANEL_HEIGHT = 480;
-// Width of the right rail (panel + margins). Empirical: panels are ~330px
-// wide at right: 24px, so anything past viewport.width - 378 overlaps.
-const RIGHT_RAIL_RESERVED = 378;
-// Bumped to _v2 so a previously-saved (top-left) position from before the
-// bottom-right default is discarded — old keys would otherwise override it.
-const STORAGE_KEY = "t_aiChatPos_v2";
-
-function clampToViewport(x: number, y: number) {
-  if (typeof window === "undefined") return { x, y };
-  return {
-    x: Math.max(8, Math.min(window.innerWidth - PANEL_WIDTH - 8, x)),
-    y: Math.max(8, Math.min(window.innerHeight - 120, y)),
-  };
-}
-
-function defaultPosition() {
-  if (typeof window === "undefined") return { x: 100, y: 100 };
-  // Bottom-right by default — clear of the top-centre toolbar. clampToViewport
-  // keeps it fully on-screen on small windows. If a right-rail panel is open,
-  // the avoidRightRail effect slides it left after mount.
-  return clampToViewport(
-    window.innerWidth - PANEL_WIDTH - 24,
-    window.innerHeight - PANEL_HEIGHT - 24,
-  );
-}
-
-// Read a previously-saved (and clamped) position, or null if none/invalid.
-function readSavedPosition(): { x: number; y: number } | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as unknown;
-      if (parsed && typeof parsed === "object" && "x" in parsed && "y" in parsed) {
-        const x = Number((parsed as { x: number }).x);
-        const y = Number((parsed as { y: number }).y);
-        if (Number.isFinite(x) && Number.isFinite(y)) return clampToViewport(x, y);
-      }
+/** Window size, measured after mount (the server has no window) and on every resize. */
+function useViewportSize(): Viewport | null {
+  const [size, setSize] = useState<Viewport | null>(null);
+  useLayoutEffect(() => {
+    function measure() {
+      setSize({ width: window.innerWidth, height: window.innerHeight });
     }
-  } catch { /* ignore */ }
-  return null;
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+  return size;
 }
 
-export function AIChatPanel({ routes, onClose, avoidRightRail, seed, onSeedConsumed }: Props) {
-  // Position is the SOURCE OF TRUTH for where this panel sits. Initialise it to
-  // the saved position (or the bottom-right default) immediately so the panel
-  // mounts in place instead of animating in from the top-left corner. The lazy
-  // initialiser keeps this SSR-safe (returns a neutral value if no window).
-  const [pos, setPos] = useState(() => {
-    if (typeof window === "undefined") return { x: 100, y: 100 };
-    return readSavedPosition() ?? defaultPosition();
-  });
-  const [dragging, setDragging] = useState(false);
+/** An in-progress drag (move) or resize, started by a pointer. */
+interface Gesture {
+  kind: "move" | "resize";
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startRect: PanelRect;
+  /** False until the pointer has travelled DRAG_THRESHOLD_PX — a click is not a drag. */
+  moved: boolean;
+}
 
-  // Persist position whenever it settles (not during drag).
-  useEffect(() => {
-    if (dragging) return;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pos)); } catch { /* ignore */ }
-  }, [pos, dragging]);
+/** Hand jitter during a click/double-click must not move (or un-expand) the card. */
+const DRAG_THRESHOLD_PX = 3;
 
-  // Collision avoidance: when the right rail opens, slide left if needed.
-  useEffect(() => {
-    if (!avoidRightRail) return;
-    setPos((prev) => {
-      const maxX = window.innerWidth - RIGHT_RAIL_RESERVED - PANEL_WIDTH;
-      if (prev.x <= maxX) return prev;
-      // 📖 Learn: returning the SAME object when no change is needed lets
-      // React skip an extra render. We only allocate a new object when we
-      // actually shift.
-      return { x: Math.max(8, maxX), y: prev.y };
-    });
-  }, [avoidRightRail]);
+/**
+ * The floating Ask AI card: draggable by its header (mouse, pen and touch),
+ * resizable from its top-left corner, expandable, and it slides out of the
+ * way of other panels. Its position and size are remembered (t_aiChatPos_v3).
+ * The chat inside is <TransitAssistant/>; the conversation lives in
+ * MapAssistantProvider, so closing the card doesn't stop or lose an answer.
+ */
+export function AIChatPanel({ onClose, seed, onSeedConsumed, avoidRightRail = false, avoidBottomRight = false }: Props) {
+  // Only the stable actions: this shell must not re-render for every streamed word.
+  const { newChat } = useMapAssistantActions();
+  const viewport = useViewportSize();
 
-  // Re-clamp on window resize so the panel can't get stranded off-screen.
-  useEffect(() => {
-    function onResize() {
-      setPos((p) => clampToViewport(p.x, p.y));
+  // The user's own choice of place and size (what gets saved). What is SHOWN
+  // is derived from it below, so it can slide back when a side panel closes.
+  const [saved, setSaved] = useState<SavedPanelState | null>(null);
+  const [gestureKind, setGestureKind] = useState<Gesture["kind"] | null>(null);
+  const gestureRef = useRef<Gesture | null>(null);
+
+  // Read the saved place after mount (localStorage doesn't exist on the server).
+  useLayoutEffect(() => {
+    let restored: SavedPanelState | null = null;
+    try {
+      restored = parsePanelState(localStorage.getItem(PANEL_STORAGE_KEY));
+    } catch {
+      /* storage blocked */
     }
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    setSaved(restored ?? { rect: defaultRect({ width: window.innerWidth, height: window.innerHeight }), expanded: false });
   }, []);
 
-  function startDrag(e: React.MouseEvent) {
-    // Only drag with primary mouse button; ignore clicks on the close button.
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const startMouseX = e.clientX;
-    const startMouseY = e.clientY;
-    const startPosX = pos.x;
-    const startPosY = pos.y;
-    setDragging(true);
+  // Save once a gesture has ended (not on every pointer move).
+  useEffect(() => {
+    if (!saved || gestureKind !== null) return;
+    try {
+      localStorage.setItem(PANEL_STORAGE_KEY, serializePanelState(saved));
+    } catch {
+      /* storage full or blocked — the card still works, it just won't remember */
+    }
+  }, [saved, gestureKind]);
 
-    // 📖 Learn: defining onMove/onUp INSIDE startDrag is deliberate — they
-    // close over startMouseX/startPosX from this drag session. Defining them
-    // at component scope would force us to keep that data in refs and deal
-    // with stale closures from useState. Same pattern as the linesHeight
-    // resizer in TransitMap.tsx.
-    function onMove(ev: MouseEvent) {
-      const dx = ev.clientX - startMouseX;
-      const dy = ev.clientY - startMouseY;
-      setPos(clampToViewport(startPosX + dx, startPosY + dy));
-    }
-    function onUp() {
-      setDragging(false);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
+  const shownRect = useMemo<PanelRect | null>(() => {
+    if (!viewport || !saved) return null;
+    const base = saved.expanded ? expandedRect(viewport) : clampRect(saved.rect, viewport);
+    const zones: AvoidZone[] = [];
+    if (avoidRightRail) zones.push(rightRailZone(viewport));
+    // The council panel shifts left when the route panel (part of the right rail) is open.
+    if (avoidBottomRight) zones.push(councilZone(viewport, avoidRightRail));
+    return avoidZones(base, zones);
+  }, [viewport, saved, avoidRightRail, avoidBottomRight]);
+
+  // ── Pointer gestures ──
+  // 📖 Learn: Pointer Events cover mouse, pen and touch with one API, and
+  // setPointerCapture keeps sending moves to this element even when the
+  // pointer leaves it — so fast drags don't "drop" the card.
+  function beginGesture(kind: Gesture["kind"], event: PointerEvent<HTMLElement>) {
+    if (!shownRect) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return; // primary button only
+    // The header's buttons handle their own clicks.
+    if (kind === "move" && (event.target as HTMLElement).closest("button")) return;
+    event.preventDefault(); // no text selection while dragging
+    event.currentTarget.setPointerCapture(event.pointerId);
+    gestureRef.current = {
+      kind,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startRect: shownRect,
+      moved: false,
+    };
+    setGestureKind(kind);
   }
+
+  function continueGesture(event: PointerEvent<HTMLElement>) {
+    const gesture = gestureRef.current;
+    if (gesture?.pointerId !== event.pointerId || !viewport) return; // not our pointer (or no gesture)
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+    if (!gesture.moved) {
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      gesture.moved = true;
+    }
+    const rect =
+      gesture.kind === "move"
+        ? moveRect(gesture.startRect, dx, dy, viewport)
+        : resizeFromTopLeft(gesture.startRect, dx, dy, viewport);
+    // Moving or resizing an expanded card turns it into a normal one at its current size.
+    setSaved({ rect, expanded: false });
+  }
+
+  function endGesture(event: PointerEvent<HTMLElement>) {
+    const gesture = gestureRef.current;
+    if (gesture?.pointerId !== event.pointerId) return; // not our pointer (or no gesture)
+    gestureRef.current = null;
+    setGestureKind(null); // triggers the save effect above
+  }
+
+  function toggleExpanded() {
+    setSaved((previous) => (previous ? { ...previous, expanded: !previous.expanded } : previous));
+  }
+
+  const expanded = saved?.expanded ?? false;
+  const style = shownRect
+    ? {
+        left: shownRect.x,
+        top: shownRect.y,
+        width: shownRect.width,
+        height: shownRect.height,
+        // Slide smoothly when avoiding panels / expanding, but follow the pointer exactly while dragging.
+        transition:
+          gestureKind === null ? "left 0.25s ease, top 0.25s ease, width 0.2s ease, height 0.2s ease" : "none",
+      }
+    : // First render, before the window was measured: invisible, so it never flashes in the wrong place.
+      { left: 0, top: 0, visibility: "hidden" as const };
 
   return (
     <div
-      className="pointer-events-auto fixed z-30 flex flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl"
-      style={{
-        left: pos.x,
-        top: pos.y,
-        width: PANEL_WIDTH,
-        // Auto height that hugs the content (so the empty state is compact, not
-        // a tall box with a gap) but never grows past PANEL_HEIGHT — past that
-        // the message list scrolls instead. The body's flex-1 + min-h-0 makes
-        // the scroll work once this cap is hit.
-        maxHeight: PANEL_HEIGHT,
-        // Smooth slide when collision-avoidance shifts the panel, but no
-        // transition during user drag (it would lag behind the cursor).
-        transition: dragging ? "none" : "left 0.25s ease, top 0.25s ease",
+      role="dialog"
+      aria-label="Ask AI"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+          event.stopPropagation();
+          onClose();
+        }
       }}
+      className="pointer-events-auto fixed z-30 flex flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white text-stone-800 shadow-2xl dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+      style={style}
     >
-      {/* Drag handle / header */}
+      {/* Resize corner (top-left: the card usually lives in the bottom-right). Mouse/touch only — the Expand button is the keyboard way to get a bigger card. */}
       <div
-        onMouseDown={startDrag}
-        className={`flex shrink-0 items-center gap-2 border-b border-stone-100 px-4 py-3 select-none ${
-          dragging ? "cursor-grabbing" : "cursor-grab"
-        }`}
+        aria-hidden="true"
+        title="Drag to resize"
+        onPointerDown={(event) => beginGesture("resize", event)}
+        onPointerMove={continueGesture}
+        onPointerUp={endGesture}
+        onPointerCancel={endGesture}
+        className="group absolute left-0 top-0 z-10 flex h-4 w-4 cursor-nwse-resize touch-none items-center justify-center"
       >
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-teal-50 text-teal-600">
-          <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-            <path d="M8 1.5L9.5 6L14 7.5L9.5 9L8 13.5L6.5 9L2 7.5L6.5 6Z" />
-          </svg>
-        </div>
-        <p className="text-sm font-semibold text-stone-800">Ask AI</p>
-        <p className="ml-auto text-[11px] text-stone-400">drag to move</p>
-        <button
-          onMouseDown={(e) => e.stopPropagation()} // don't start a drag from the close button
-          onClick={onClose}
-          aria-label="Close"
-          className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-stone-400 hover:bg-stone-100 hover:text-stone-700"
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="h-3.5 w-3.5">
-            <path d="M4 4L12 12M12 4L4 12" />
-          </svg>
-        </button>
+        <ResizeGripIcon className="h-2.5 w-2.5 text-stone-400 opacity-0 transition-opacity group-hover:opacity-100" />
       </div>
 
-      {/* Chat body */}
-      <div className="flex flex-col flex-1 min-h-0 p-3">
-        <TransitAssistant routes={routes} seed={seed} onSeedConsumed={onSeedConsumed} />
-      </div>
+      {/* Header = drag handle. touch-none stops touch-drags from scrolling the page. */}
+      <header
+        onPointerDown={(event) => beginGesture("move", event)}
+        onPointerMove={continueGesture}
+        onPointerUp={endGesture}
+        onPointerCancel={endGesture}
+        onDoubleClick={(event) => {
+          if (!(event.target as HTMLElement).closest("button")) toggleExpanded();
+        }}
+        className={`flex shrink-0 touch-none select-none items-center gap-2 border-b border-stone-100 py-2 pl-4 pr-2 dark:border-stone-800 ${
+          gestureKind === "move" ? "cursor-grabbing" : "cursor-grab"
+        }`}
+      >
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-50 text-teal-600 dark:bg-teal-500/15 dark:text-teal-300">
+          <SparkleIcon className="h-4 w-4" />
+        </span>
+        <h2 className="text-sm font-semibold text-stone-800 dark:text-stone-100">Ask AI</h2>
+        <span className="rounded-full bg-teal-50 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-teal-700 ring-1 ring-inset ring-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-800">
+          beta
+        </span>
+        <div className="ml-auto flex items-center gap-0.5">
+          <HeaderButton label="New chat" onClick={newChat}>
+            <NewChatIcon className="h-4 w-4" />
+          </HeaderButton>
+          <HeaderButton label={expanded ? "Restore size" : "Expand"} onClick={toggleExpanded}>
+            {expanded ? <CollapseIcon className="h-4 w-4" /> : <ExpandIcon className="h-4 w-4" />}
+          </HeaderButton>
+          <HeaderButton label="Close" onClick={onClose}>
+            <CloseIcon className="h-4 w-4" />
+          </HeaderButton>
+        </div>
+      </header>
+
+      {/* Mounted once the card has its real position, so focusing the message box works (hidden elements can't take focus). */}
+      {shownRect && <TransitAssistant seed={seed} onSeedConsumed={onSeedConsumed} variant="panel" />}
     </div>
+  );
+}
+
+function HeaderButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+    >
+      {children}
+    </button>
   );
 }

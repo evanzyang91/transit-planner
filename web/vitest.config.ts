@@ -16,7 +16,9 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    // scripts/**/*.test.mjs: the AI benchmark's offline tests (protocol parsing,
+    // scoring, question checks against the real contract) — no network, no model.
+    include: ["src/**/*.test.ts", "scripts/**/*.test.mjs"],
     env: {
       // env.js validates the full server schema at import time; tests only need
       // the modules, not a real environment.

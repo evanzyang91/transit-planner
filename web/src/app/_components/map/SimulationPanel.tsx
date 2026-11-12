@@ -109,6 +109,13 @@ export interface SimulationPanelProps {
   onAnimate: (agents: PerAgentResult[]) => void;
   /** Optional callback for the per-segment "Ask AI" affordance on the Stress tab. */
   onAskAI?: (segment: StressSegment) => void;
+  /**
+   * A result computed somewhere else — the Ask AI assistant's run_simulation
+   * tool. Whenever this changes to a new non-null result, the panel shows it
+   * (Overview tab) exactly as if the user had pressed Run. It is NOT re-run.
+   * The parent has already put it on the map, so onResults isn't called for it.
+   */
+  externalResult?: SimulationResult | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -351,7 +358,7 @@ function TimeRangeSlider({
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
 
-export function SimulationPanel({ customRoutes, onClose, onResults, onAnimate, onAskAI }: SimulationPanelProps) {
+export function SimulationPanel({ customRoutes, onClose, onResults, onAnimate, onAskAI, externalResult }: SimulationPanelProps) {
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [result, setResult]           = useState<SimulationResult | null>(null);
@@ -362,6 +369,17 @@ export function SimulationPanel({ customRoutes, onClose, onResults, onAnimate, o
   const [speedsFetching, setSpeedsFetching] = useState(false);
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
+  // Adopt a result the assistant ran. Keyed on the object itself: every
+  // show_simulation event carries a freshly parsed object, so a second run
+  // is a new value even if the numbers happen to match. A null (no assistant
+  // run yet) leaves whatever the user is looking at alone.
+  useEffect(() => {
+    if (!externalResult) return;
+    setResult(externalResult);
+    setError(null);
+    setActiveTab("overview");
+  }, [externalResult]);
 
   const hasProposed = customRoutes.length > 0;
   const scenarioName = hasProposed

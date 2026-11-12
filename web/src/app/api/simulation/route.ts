@@ -1,7 +1,8 @@
 import "server-only";
 import { type NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { runSimulation, type SimulationResult, type StressSegment, type TransitSpeedData } from "~/server/simulation";
+import { runSimulation, type SimulationResult, type TransitSpeedData } from "~/server/simulation";
+import { convertResult } from "~/server/simulation-api";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -43,92 +44,9 @@ Paragraph 1: Overall effectiveness summary. Paragraph 2: Equity and access impli
 }
 
 // ── Field name conversion ──────────────────────────────────────────────────────
-
-function convertStressSegment(seg: StressSegment) {
-  return {
-    line_name: seg.lineName,
-    from_stop: seg.fromStop,
-    to_stop: seg.toStop,
-    from_coords: seg.fromCoords,
-    to_coords: seg.toCoords,
-    agent_trips: seg.agentTrips,
-    baseline_trips: seg.baselineTrips,
-    stress_pct: seg.stressPct,
-    delta_pct: seg.deltaPct,
-  };
-}
-
-function convertResult(r: SimulationResult, scenarioName: string, narrative: string) {
-  return {
-    scenario_name: scenarioName,
-    agent_count: r.agentCount,
-    animated_agent_count: r.animatedAgentCount,
-    run_duration_s: r.runDurationS,
-    has_proposed_lines: r.hasProposedLines,
-    time_range: { start_min: r.timeRange.startMin, end_min: r.timeRange.endMin },
-    baseline: {
-      pct_accessible: r.baseline.pctAccessible,
-      avg_transit_time_min: r.baseline.avgTransitMin,
-      median_transit_time_min: r.baseline.medianTransitMin,
-      p90_transit_time_min: r.baseline.p90TransitMin,
-      avg_total_time_min: r.baseline.avgTotalMin,
-      avg_transfers: r.baseline.avgTransfers,
-      avg_car_time_min: r.baseline.avgCarMin,
-      income_breakdown: r.baseline.incomeBreakdown,
-    },
-    scenario: {
-      pct_accessible: r.scenario.pctAccessible,
-      avg_transit_time_min: r.scenario.avgTransitMin,
-      median_transit_time_min: r.scenario.medianTransitMin,
-      p90_transit_time_min: r.scenario.p90TransitMin,
-      avg_total_time_min: r.scenario.avgTotalMin,
-      avg_transfers: r.scenario.avgTransfers,
-      avg_car_time_min: r.scenario.avgCarMin,
-      income_breakdown: r.scenario.incomeBreakdown,
-    },
-    delta: {
-      time_saved_min: r.delta.timeSavedMin,
-      total_time_saved_min: r.delta.totalTimeSavedMin,
-      accessibility_gain_pct: r.delta.accessibilityGainPct,
-      transfer_reduction: r.delta.transferReduction,
-      equity_improvement: r.delta.equityImprovement,
-      newly_accessible_agents: r.delta.newlyAccessibleAgents,
-    },
-    equity: {
-      baseline_score: r.equity.baselineScore,
-      scenario_score: r.equity.scenarioScore,
-    },
-    line_stress: r.lineStress.map(convertStressSegment),
-    baseline_edge_stress: r.baselineEdgeStress.map(convertStressSegment),
-    per_agent: r.perAgent.map((p) => ({
-      agent_id: p.agentId,
-      home_lon: p.homeLon,
-      home_lat: p.homeLat,
-      income: p.income,
-      transit_dep: p.transitDep,
-      persona: p.persona,
-      purpose: p.purpose,
-      baseline_time: p.baselineTime,
-      scenario_time: p.scenarioTime,
-      time_saved_min: p.timeSavedMin,
-      newly_accessible: p.newlyAccessible,
-      departure_min: p.departureMin,
-      path_coords: p.pathCoords,
-    })),
-    narrative,
-    transit_speed_source:    r.transitSpeedSource,
-    transit_updated_at:      r.transitUpdatedAt,
-    transit_trip_count:      r.transitTripCount,
-    transit_road_multiplier: r.transitRoadMultiplier,
-    transit_time_period:     r.transitTimePeriod,
-    graph_stats: {
-      baseline_nodes: r.graphStats.nodes,
-      baseline_edges: r.graphStats.edges,
-      scenario_nodes: r.graphStats.scenarioNodes,
-      scenario_edges: r.graphStats.scenarioEdges,
-    },
-  };
-}
+// convertResult / convertStressSegment now live in ~/server/simulation-api.ts so
+// the Ask AI `run_simulation` tool produces exactly the same JSON shape as this
+// route (one adapter, no second copy to drift).
 
 // ── Endpoints ─────────────────────────────────────────────────────────────────
 

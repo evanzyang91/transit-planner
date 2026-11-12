@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   robots: { index: true, follow: false },
 };
 
-const LAST_UPDATED = "August 31, 2026";
+const LAST_UPDATED = "November 12, 2026";
 
 const privacySections = [
   {
@@ -188,8 +188,10 @@ const privacySections = [
           Information already sent to the third parties in section 4 is retained under their policies and settings,
           not this one. In practice that means notifications posted to an operator&rsquo;s Discord workspace persist in
           that channel until someone deletes them, and AI traces persist for the retention period configured on the
-          operator&rsquo;s Langfuse project. AI conversation state itself is held in server memory for an active session
-          and is lost when the server restarts.
+          operator&rsquo;s Langfuse project. Ask AI conversations are stored in your browser&rsquo;s local storage on
+          this device, not on the app&rsquo;s server: each time you send a message, the conversation so far is sent
+          along with it so the AI provider can answer in context, and the server does not keep a copy afterwards.
+          Clearing this site&rsquo;s data in your browser deletes it.
         </p>
       </div>
     ),
