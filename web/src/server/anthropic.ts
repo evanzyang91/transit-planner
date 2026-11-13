@@ -503,6 +503,15 @@ export function buildAnthropicMapParams(
     system.push({ type: "text", text: request.system.dynamicContext });
   }
 
+  // The closing call (tools off) only writes a 1–3 sentence caption, so thinking
+  // first just adds wait (measured: closing calls were ~1.5 s, on half of all turns).
+  // Only Haiku 5.x accepts thinking "disabled", and only at effort ≤ high;
+  // Sonnet/Opus 5.5 reject it, so other models keep their default.
+  const skipThinking =
+    request.toolChoice === "none" &&
+    settings.model.startsWith("claude-haiku-5") &&
+    (settings.effort === "low" || settings.effort === "medium" || settings.effort === "high");
+
   return {
     model: settings.model,
     max_tokens: request.maxTokens,
@@ -511,6 +520,7 @@ export function buildAnthropicMapParams(
     tools,
     // "auto" (not a forced tool): a forced tool_choice makes Haiku 5.5 skip thinking.
     tool_choice: { type: request.toolChoice },
+    ...(skipThinking ? { thinking: { type: "disabled" as const } } : {}),
     // 📖 Learn: prompt caching — the API stores the processed prompt prefix for
     // ~5 minutes; a later request with the same prefix reads it back at ~10% of
     // the price and with a faster first token.
@@ -639,6 +649,11 @@ export function describeAnthropicError(error: unknown): MapErrorInfo {
   };
 }
 
+/** Max wait for a model response to start (SDK request timeout). */
+const MAP_REQUEST_TIMEOUT_MS = 60_000;
+/** Max silence between stream events before the step is treated as stalled. */
+const MAP_STREAM_IDLE_MS = 45_000;
+
 /** One model call of the map assistant, streamed (see MapStepper in ai-map-stream.ts). */
 export function createAnthropicMapStepper(
   client: Anthropic,
@@ -655,12 +670,28 @@ export function createAnthropicMapStepper(
 
     async *step(request): AsyncGenerator<MapStepEvent, MapStepResult, void> {
       // Passing the signal aborts the HTTP stream when the user presses Stop.
+      // timeout/maxRetries: the SDK defaults (10 min, 2 retries) let one dead
+      // connection hang a chat turn for 10+ minutes; fail fast and let the user Retry.
       const stream = client.messages.stream(buildAnthropicMapParams(settings, anthropicTools, request), {
         signal: request.signal,
+        timeout: MAP_REQUEST_TIMEOUT_MS,
+        maxRetries: 1,
       });
+      // The SDK timeout only covers waiting for the response to START. This
+      // watchdog also catches a stream that stalls halfway through.
+      // 📖 Learn: an "idle timeout" resets on every chunk, so long-but-healthy
+      // answers are fine; only silence trips it.
+      let stalled = false;
+      let idleTimer = setTimeout(onIdle, MAP_STREAM_IDLE_MS);
+      function onIdle() {
+        stalled = true;
+        stream.abort();
+      }
       let completed = false;
       try {
         for await (const event of stream) {
+          clearTimeout(idleTimer);
+          idleTimer = setTimeout(onIdle, MAP_STREAM_IDLE_MS);
           if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
             // The tool's name is known as soon as its block starts — long
             // before its arguments finish streaming. Early progress for the UI.
@@ -682,7 +713,12 @@ export function createAnthropicMapStepper(
             cacheCreationTokens: final.usage.cache_creation_input_tokens ?? 0,
           },
         };
+      } catch (error) {
+        // Our watchdog aborted it: report a retryable timeout, not "Stopped."
+        if (stalled) throw new Anthropic.APIConnectionTimeoutError({ message: "The AI stream stalled." });
+        throw error;
       } finally {
+        clearTimeout(idleTimer);
         // The loop stopped listening early (or an error was thrown): don't
         // keep downloading a reply nobody will read.
         if (!completed) stream.abort();

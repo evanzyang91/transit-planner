@@ -284,8 +284,9 @@ describe("createAnthropicMapStepper", () => {
     expect(next.value.native).toEqual({ provider: "anthropic", content: final.content });
     expect(next.value.stopReason).toBe("tool_use");
     expect(next.value.usage).toEqual({ inputTokens: 40, outputTokens: 12, cacheReadTokens: 3000, cacheCreationTokens: 0 });
-    // The Stop signal reaches the SDK request.
-    expect(calls[0]!.options).toEqual({ signal: controller.signal });
+    // The Stop signal reaches the SDK request, with a fail-fast timeout and one retry
+    // (the SDK defaults let a dead connection hang a turn for 10+ minutes).
+    expect(calls[0]!.options).toEqual({ signal: controller.signal, timeout: 60_000, maxRetries: 1 });
   });
 
   it("maps refusal and max_tokens stop reasons", async () => {
