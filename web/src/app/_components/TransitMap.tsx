@@ -5707,8 +5707,14 @@ function getAnalyticsContext(routeList: Route[] = routesRef.current) {
         }}
       />
 
-      {/* Import / Export — top right */}
-      <div className="pointer-events-none absolute top-5 right-6 z-10 flex items-start gap-2">
+      {/* Import / Export — top right.
+          This wrapper is a stacking context, so its menus' own z-index only
+          counts inside it. While a menu is open, lift the whole toolbar to
+          z-35: above the Ask AI card (z-30), below the right-click menu (z-40)
+          and modals (z-50). It's only lifted while a menu is open so the
+          buttons don't cover a card the user has dragged to the top.
+          📖 Learn: CSS stacking contexts (why a child's z-index can't escape its parent) */}
+      <div className={`pointer-events-none absolute top-5 right-6 flex items-start gap-2 ${showSettingsMenu || showIEDropdown ? "z-35" : "z-10"}`}>
 
         {/* ── Wide screens: two full-width buttons ── */}
         <button
